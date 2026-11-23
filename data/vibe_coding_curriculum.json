@@ -1,0 +1,920 @@
+{
+  "programme": {
+    "title": "Vibe Coding & AI Development Mastery",
+    "duration_weeks": 12,
+    "lessons_per_week": 2,
+    "minutes_per_lesson": 60,
+    "total_lessons": 24,
+    "hierarchy": [
+      "Learning Domain",
+      "Core Competency",
+      "Practical Exercise"
+    ]
+  },
+  "weeks": [
+    {
+      "week": 1,
+      "lesson_1_id": "L01",
+      "lesson_2_id": "L02"
+    },
+    {
+      "week": 2,
+      "lesson_1_id": "L03",
+      "lesson_2_id": "L04"
+    },
+    {
+      "week": 3,
+      "lesson_1_id": "L05",
+      "lesson_2_id": "L06"
+    },
+    {
+      "week": 4,
+      "lesson_1_id": "L07",
+      "lesson_2_id": "L08"
+    },
+    {
+      "week": 5,
+      "lesson_1_id": "L09",
+      "lesson_2_id": "L10"
+    },
+    {
+      "week": 6,
+      "lesson_1_id": "L11",
+      "lesson_2_id": "L12"
+    },
+    {
+      "week": 7,
+      "lesson_1_id": "L13",
+      "lesson_2_id": "L14"
+    },
+    {
+      "week": 8,
+      "lesson_1_id": "L15",
+      "lesson_2_id": "L16"
+    },
+    {
+      "week": 9,
+      "lesson_1_id": "L17",
+      "lesson_2_id": "L18"
+    },
+    {
+      "week": 10,
+      "lesson_1_id": "L19",
+      "lesson_2_id": "L20"
+    },
+    {
+      "week": 11,
+      "lesson_1_id": "L21",
+      "lesson_2_id": "L22"
+    },
+    {
+      "week": 12,
+      "lesson_1_id": "L23",
+      "lesson_2_id": "L24"
+    }
+  ],
+  "lessons": [
+    {
+      "id": "L01",
+      "number": 1,
+      "week": 1,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "VS Code and workspace management",
+      "domain_id": "D1",
+      "competency_id": "D1-C1"
+    },
+    {
+      "id": "L02",
+      "number": 2,
+      "week": 1,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Terminal and PowerShell",
+      "domain_id": "D1",
+      "competency_id": "D1-C2"
+    },
+    {
+      "id": "L03",
+      "number": 3,
+      "week": 2,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Application structure",
+      "domain_id": "D1",
+      "competency_id": "D1-C3"
+    },
+    {
+      "id": "L04",
+      "number": 4,
+      "week": 2,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Local execution and troubleshooting",
+      "domain_id": "D1",
+      "competency_id": "D1-C4"
+    },
+    {
+      "id": "L05",
+      "number": 5,
+      "week": 3,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Git foundations",
+      "domain_id": "D2",
+      "competency_id": "D2-C1"
+    },
+    {
+      "id": "L06",
+      "number": 6,
+      "week": 3,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Remote repository operations",
+      "domain_id": "D2",
+      "competency_id": "D2-C2"
+    },
+    {
+      "id": "L07",
+      "number": 7,
+      "week": 4,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Branching and merging",
+      "domain_id": "D2",
+      "competency_id": "D2-C3"
+    },
+    {
+      "id": "L08",
+      "number": 8,
+      "week": 4,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Collaboration and recovery",
+      "domain_id": "D2",
+      "competency_id": "D2-C4"
+    },
+    {
+      "id": "L09",
+      "number": 9,
+      "week": 5,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Claude Code environment",
+      "domain_id": "D3",
+      "competency_id": "D3-C1"
+    },
+    {
+      "id": "L10",
+      "number": 10,
+      "week": 5,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Specification-driven prompting",
+      "domain_id": "D3",
+      "competency_id": "D3-C2"
+    },
+    {
+      "id": "L11",
+      "number": 11,
+      "week": 6,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Application building with AI",
+      "domain_id": "D3",
+      "competency_id": "D3-C3"
+    },
+    {
+      "id": "L12",
+      "number": 12,
+      "week": 6,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Debugging and testing",
+      "domain_id": "D3",
+      "competency_id": "D3-C4"
+    },
+    {
+      "id": "L13",
+      "number": 13,
+      "week": 7,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Persistent project instructions",
+      "domain_id": "D4",
+      "competency_id": "D4-C1"
+    },
+    {
+      "id": "L14",
+      "number": 14,
+      "week": 7,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Custom skills",
+      "domain_id": "D4",
+      "competency_id": "D4-C2"
+    },
+    {
+      "id": "L15",
+      "number": 15,
+      "week": 8,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Specialist subagents",
+      "domain_id": "D4",
+      "competency_id": "D4-C3"
+    },
+    {
+      "id": "L16",
+      "number": 16,
+      "week": 8,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Coordinated agent workflows",
+      "domain_id": "D4",
+      "competency_id": "D4-C4"
+    },
+    {
+      "id": "L17",
+      "number": 17,
+      "week": 9,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "API fundamentals",
+      "domain_id": "D5",
+      "competency_id": "D5-C1"
+    },
+    {
+      "id": "L18",
+      "number": 18,
+      "week": 9,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "MCP fundamentals",
+      "domain_id": "D5",
+      "competency_id": "D5-C2"
+    },
+    {
+      "id": "L19",
+      "number": 19,
+      "week": 10,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Databases and structured data",
+      "domain_id": "D5",
+      "competency_id": "D5-C3"
+    },
+    {
+      "id": "L20",
+      "number": 20,
+      "week": 10,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Automation workflows",
+      "domain_id": "D5",
+      "competency_id": "D5-C4"
+    },
+    {
+      "id": "L21",
+      "number": 21,
+      "week": 11,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Chatbots and application intelligence",
+      "domain_id": "D6",
+      "competency_id": "D6-C1"
+    },
+    {
+      "id": "L22",
+      "number": 22,
+      "week": 11,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Security and deployment",
+      "domain_id": "D6",
+      "competency_id": "D6-C2"
+    },
+    {
+      "id": "L23",
+      "number": 23,
+      "week": 12,
+      "session_in_week": 1,
+      "duration_minutes": 60,
+      "title": "Capstone implementation",
+      "domain_id": "D6",
+      "competency_id": "D6-C3"
+    },
+    {
+      "id": "L24",
+      "number": 24,
+      "week": 12,
+      "session_in_week": 2,
+      "duration_minutes": 60,
+      "title": "Capstone demonstration",
+      "domain_id": "D6",
+      "competency_id": "D6-C4"
+    }
+  ],
+  "learning_domains": [
+    {
+      "id": "D1",
+      "name": "VS Code & Development Environment",
+      "objective": "Understand the software development workspace and operate it independently.",
+      "core_competencies": [
+        {
+          "id": "D1-C1",
+          "title": "VS Code and workspace management",
+          "lesson_id": "L01",
+          "practical_exercises": [
+            {
+              "id": "D1-C1-E1",
+              "description": "Install and configure VS Code and essential extensions."
+            },
+            {
+              "id": "D1-C1-E2",
+              "description": "Navigate Explorer, Search, Source Control, editor tabs and integrated terminal."
+            },
+            {
+              "id": "D1-C1-E3",
+              "description": "Create, open and organise project folders and files."
+            },
+            {
+              "id": "D1-C1-E4",
+              "description": "Understand local folders versus cloud repositories."
+            }
+          ]
+        },
+        {
+          "id": "D1-C2",
+          "title": "Terminal and PowerShell",
+          "lesson_id": "L02",
+          "practical_exercises": [
+            {
+              "id": "D1-C2-E1",
+              "description": "Navigate folders using cd, pwd and Get-ChildItem."
+            },
+            {
+              "id": "D1-C2-E2",
+              "description": "Create, rename, move and delete files with appropriate safeguards."
+            },
+            {
+              "id": "D1-C2-E3",
+              "description": "Run Node.js commands and launch a development server."
+            },
+            {
+              "id": "D1-C2-E4",
+              "description": "Understand command errors, paths and environment variables."
+            }
+          ]
+        },
+        {
+          "id": "D1-C3",
+          "title": "Application structure",
+          "lesson_id": "L03",
+          "practical_exercises": [
+            {
+              "id": "D1-C3-E1",
+              "description": "Explain HTML, CSS, JavaScript, JSON and Markdown."
+            },
+            {
+              "id": "D1-C3-E2",
+              "description": "Identify package.json, .env, src and configuration files."
+            },
+            {
+              "id": "D1-C3-E3",
+              "description": "Differentiate frontend, backend, server and database."
+            },
+            {
+              "id": "D1-C3-E4",
+              "description": "Open and explain the structure of an existing project."
+            }
+          ]
+        },
+        {
+          "id": "D1-C4",
+          "title": "Local execution and troubleshooting",
+          "lesson_id": "L04",
+          "practical_exercises": [
+            {
+              "id": "D1-C4-E1",
+              "description": "Launch a simple website locally."
+            },
+            {
+              "id": "D1-C4-E2",
+              "description": "Make and verify a change to the interface."
+            },
+            {
+              "id": "D1-C4-E3",
+              "description": "Inspect browser console and VS Code errors."
+            },
+            {
+              "id": "D1-C4-E4",
+              "description": "Resolve one deliberately introduced error."
+            }
+          ]
+        }
+      ],
+      "assessment": "Open an unfamiliar project, identify its files, run it locally, edit its interface and fix an error."
+    },
+    {
+      "id": "D2",
+      "name": "Git & GitHub Version Control",
+      "objective": "Manage repositories, code history, branches, collaborative changes and GitHub permissions.",
+      "core_competencies": [
+        {
+          "id": "D2-C1",
+          "title": "Git foundations",
+          "lesson_id": "L05",
+          "practical_exercises": [
+            {
+              "id": "D2-C1-E1",
+              "description": "Understand Git versus GitHub, local versus remote repositories."
+            },
+            {
+              "id": "D2-C1-E2",
+              "description": "Initialise a repository and run git status."
+            },
+            {
+              "id": "D2-C1-E3",
+              "description": "Stage and commit changes using git add and git commit."
+            },
+            {
+              "id": "D2-C1-E4",
+              "description": "Inspect commit history and create a .gitignore file."
+            }
+          ]
+        },
+        {
+          "id": "D2-C2",
+          "title": "Remote repository operations",
+          "lesson_id": "L06",
+          "practical_exercises": [
+            {
+              "id": "D2-C2-E1",
+              "description": "Create public and private GitHub repositories."
+            },
+            {
+              "id": "D2-C2-E2",
+              "description": "Clone a repository to the computer."
+            },
+            {
+              "id": "D2-C2-E3",
+              "description": "Practise git push, git pull and git fetch."
+            },
+            {
+              "id": "D2-C2-E4",
+              "description": "Inspect git remote -v and understand origin and authentication."
+            }
+          ]
+        },
+        {
+          "id": "D2-C3",
+          "title": "Branching and merging",
+          "lesson_id": "L07",
+          "practical_exercises": [
+            {
+              "id": "D2-C3-E1",
+              "description": "Create and switch between feature branches."
+            },
+            {
+              "id": "D2-C3-E2",
+              "description": "Modify and commit files on a feature branch."
+            },
+            {
+              "id": "D2-C3-E3",
+              "description": "Push a branch and create a pull request."
+            },
+            {
+              "id": "D2-C3-E4",
+              "description": "Merge a branch and resolve a simple conflict."
+            }
+          ]
+        },
+        {
+          "id": "D2-C4",
+          "title": "Collaboration and recovery",
+          "lesson_id": "L08",
+          "practical_exercises": [
+            {
+              "id": "D2-C4-E1",
+              "description": "Invite a collaborator and manage repository permissions."
+            },
+            {
+              "id": "D2-C4-E2",
+              "description": "Share repositories and understand forks."
+            },
+            {
+              "id": "D2-C4-E3",
+              "description": "Use GitHub Issues and review pull requests."
+            },
+            {
+              "id": "D2-C4-E4",
+              "description": "Troubleshoot a repository access error and restore an earlier version."
+            }
+          ]
+        }
+      ],
+      "assessment": "Create a repository, clone it, branch, edit, commit, push, open a pull request, merge and share it with a collaborator."
+    },
+    {
+      "id": "D3",
+      "name": "Claude Code & Vibe Coding",
+      "objective": "Use AI to plan, generate, improve, test and troubleshoot software while remaining in control of the codebase.",
+      "core_competencies": [
+        {
+          "id": "D3-C1",
+          "title": "Claude Code environment",
+          "lesson_id": "L09",
+          "practical_exercises": [
+            {
+              "id": "D3-C1-E1",
+              "description": "Set up Claude Code in VS Code and CLI."
+            },
+            {
+              "id": "D3-C1-E2",
+              "description": "Understand its permissions, tools, context and project awareness."
+            },
+            {
+              "id": "D3-C1-E3",
+              "description": "Learn how to inspect changes before accepting edits."
+            },
+            {
+              "id": "D3-C1-E4",
+              "description": "Distinguish AI-generated changes from commands executed in the terminal."
+            }
+          ]
+        },
+        {
+          "id": "D3-C2",
+          "title": "Specification-driven prompting",
+          "lesson_id": "L10",
+          "practical_exercises": [
+            {
+              "id": "D3-C2-E1",
+              "description": "Translate an idea into a clear requirements specification."
+            },
+            {
+              "id": "D3-C2-E2",
+              "description": "Write objectives, constraints and acceptance criteria."
+            },
+            {
+              "id": "D3-C2-E3",
+              "description": "Break large feature requests into manageable changes."
+            },
+            {
+              "id": "D3-C2-E4",
+              "description": "Use plan, implement, test and review workflows."
+            }
+          ]
+        },
+        {
+          "id": "D3-C3",
+          "title": "Application building with AI",
+          "lesson_id": "L11",
+          "practical_exercises": [
+            {
+              "id": "D3-C3-E1",
+              "description": "Create a simple dashboard using Claude Code."
+            },
+            {
+              "id": "D3-C3-E2",
+              "description": "Build navigation, forms, tables and filters."
+            },
+            {
+              "id": "D3-C3-E3",
+              "description": "Understand the purpose of generated frontend and backend code."
+            },
+            {
+              "id": "D3-C3-E4",
+              "description": "Modify the interface without breaking existing functionality."
+            }
+          ]
+        },
+        {
+          "id": "D3-C4",
+          "title": "Debugging and testing",
+          "lesson_id": "L12",
+          "practical_exercises": [
+            {
+              "id": "D3-C4-E1",
+              "description": "Identify errors using logs and browser developer tools."
+            },
+            {
+              "id": "D3-C4-E2",
+              "description": "Ask Claude to diagnose an issue using evidence."
+            },
+            {
+              "id": "D3-C4-E3",
+              "description": "Create and execute a basic automated test."
+            },
+            {
+              "id": "D3-C4-E4",
+              "description": "Use Git to recover from an unsuccessful change."
+            }
+          ]
+        }
+      ],
+      "assessment": "Build and test a functioning dashboard from a specification, troubleshoot an error and commit the completed feature."
+    },
+    {
+      "id": "D4",
+      "name": "AI Skills, Instructions & Agents",
+      "objective": "Create reusable Claude capabilities, specialist agents and coordinated AI workflows.",
+      "core_competencies": [
+        {
+          "id": "D4-C1",
+          "title": "Persistent project instructions",
+          "lesson_id": "L13",
+          "practical_exercises": [
+            {
+              "id": "D4-C1-E1",
+              "description": "Understand CLAUDE.md, AGENTS.md and project instruction scopes."
+            },
+            {
+              "id": "D4-C1-E2",
+              "description": "Create a CLAUDE.md file for an existing project."
+            },
+            {
+              "id": "D4-C1-E3",
+              "description": "Define architecture, conventions and operational boundaries."
+            },
+            {
+              "id": "D4-C1-E4",
+              "description": "Test whether Claude applies instructions consistently."
+            }
+          ]
+        },
+        {
+          "id": "D4-C2",
+          "title": "Custom skills",
+          "lesson_id": "L14",
+          "practical_exercises": [
+            {
+              "id": "D4-C2-E1",
+              "description": "Understand the structure and purpose of SKILL.md."
+            },
+            {
+              "id": "D4-C2-E2",
+              "description": "Create a skill folder and write a reusable skill."
+            },
+            {
+              "id": "D4-C2-E3",
+              "description": "Add reference files, input requirements and output checks."
+            },
+            {
+              "id": "D4-C2-E4",
+              "description": "Build and test a GTM cost-analysis skill."
+            }
+          ]
+        },
+        {
+          "id": "D4-C3",
+          "title": "Specialist subagents",
+          "lesson_id": "L15",
+          "practical_exercises": [
+            {
+              "id": "D4-C3-E1",
+              "description": "Understand agents versus skills versus ordinary prompts."
+            },
+            {
+              "id": "D4-C3-E2",
+              "description": "Create an agent definition with a specific role."
+            },
+            {
+              "id": "D4-C3-E3",
+              "description": "Define available tools, constraints and expected output."
+            },
+            {
+              "id": "D4-C3-E4",
+              "description": "Build a reporting agent and test delegation."
+            }
+          ]
+        },
+        {
+          "id": "D4-C4",
+          "title": "Coordinated agent workflows",
+          "lesson_id": "L16",
+          "practical_exercises": [
+            {
+              "id": "D4-C4-E1",
+              "description": "Design a coordinating agent with specialist roles."
+            },
+            {
+              "id": "D4-C4-E2",
+              "description": "Create a workflow that delegates analysis and reporting."
+            },
+            {
+              "id": "D4-C4-E3",
+              "description": "Define structured outputs and validation."
+            },
+            {
+              "id": "D4-C4-E4",
+              "description": "Add approval requirements before external actions."
+            }
+          ]
+        }
+      ],
+      "assessment": "Build two reusable skills, one specialist subagent and one coordinated workflow; demonstrate reuse without rewriting large prompts."
+    },
+    {
+      "id": "D5",
+      "name": "APIs, MCP & Integrations",
+      "objective": "Connect AI applications to external tools and structured data reliably and securely.",
+      "core_competencies": [
+        {
+          "id": "D5-C1",
+          "title": "API fundamentals",
+          "lesson_id": "L17",
+          "practical_exercises": [
+            {
+              "id": "D5-C1-E1",
+              "description": "Understand endpoints, JSON, GET, POST and error responses."
+            },
+            {
+              "id": "D5-C1-E2",
+              "description": "Inspect API documentation and authenticate a test request."
+            },
+            {
+              "id": "D5-C1-E3",
+              "description": "Retrieve sample data and inspect its structure."
+            },
+            {
+              "id": "D5-C1-E4",
+              "description": "Explain API rate limits and error handling."
+            }
+          ]
+        },
+        {
+          "id": "D5-C2",
+          "title": "MCP fundamentals",
+          "lesson_id": "L18",
+          "practical_exercises": [
+            {
+              "id": "D5-C2-E1",
+              "description": "Understand MCP servers, clients, tools and resources."
+            },
+            {
+              "id": "D5-C2-E2",
+              "description": "Configure an MCP integration in Claude Code."
+            },
+            {
+              "id": "D5-C2-E3",
+              "description": "List available tools and test a read-only operation."
+            },
+            {
+              "id": "D5-C2-E4",
+              "description": "Understand MCP versus direct API calls."
+            }
+          ]
+        },
+        {
+          "id": "D5-C3",
+          "title": "Databases and structured data",
+          "lesson_id": "L19",
+          "practical_exercises": [
+            {
+              "id": "D5-C3-E1",
+              "description": "Understand files, spreadsheets and databases."
+            },
+            {
+              "id": "D5-C3-E2",
+              "description": "Create a basic table and perform simple SQL queries."
+            },
+            {
+              "id": "D5-C3-E3",
+              "description": "Understand records, relationships and data validation."
+            },
+            {
+              "id": "D5-C3-E4",
+              "description": "Connect application data to a simple dashboard."
+            }
+          ]
+        },
+        {
+          "id": "D5-C4",
+          "title": "Automation workflows",
+          "lesson_id": "L20",
+          "practical_exercises": [
+            {
+              "id": "D5-C4-E1",
+              "description": "Create a simple n8n or equivalent workflow."
+            },
+            {
+              "id": "D5-C4-E2",
+              "description": "Retrieve data from an API or spreadsheet."
+            },
+            {
+              "id": "D5-C4-E3",
+              "description": "Transform data and produce an AI-assisted summary."
+            },
+            {
+              "id": "D5-C4-E4",
+              "description": "Test failures and document recovery steps."
+            }
+          ]
+        }
+      ],
+      "assessment": "Build an automated reporting flow that reads data, validates it and produces a reliable structured result."
+    },
+    {
+      "id": "D6",
+      "name": "AI Application Development",
+      "objective": "Combine the preceding skills to create and maintain a useful AI-powered application.",
+      "core_competencies": [
+        {
+          "id": "D6-C1",
+          "title": "Chatbots and application intelligence",
+          "lesson_id": "L21",
+          "practical_exercises": [
+            {
+              "id": "D6-C1-E1",
+              "description": "Create a chatbot interface connected to an AI model."
+            },
+            {
+              "id": "D6-C1-E2",
+              "description": "Implement a simple tool or data-query workflow."
+            },
+            {
+              "id": "D6-C1-E3",
+              "description": "Understand conversational context and data retrieval."
+            },
+            {
+              "id": "D6-C1-E4",
+              "description": "Validate responses against actual structured data."
+            }
+          ]
+        },
+        {
+          "id": "D6-C2",
+          "title": "Security and deployment",
+          "lesson_id": "L22",
+          "practical_exercises": [
+            {
+              "id": "D6-C2-E1",
+              "description": "Protect API keys and environment variables."
+            },
+            {
+              "id": "D6-C2-E2",
+              "description": "Understand authentication, permissions and sensitive data."
+            },
+            {
+              "id": "D6-C2-E3",
+              "description": "Deploy a small application to a hosting service."
+            },
+            {
+              "id": "D6-C2-E4",
+              "description": "Test the deployed app and inspect deployment errors."
+            }
+          ]
+        },
+        {
+          "id": "D6-C3",
+          "title": "Capstone implementation",
+          "lesson_id": "L23",
+          "practical_exercises": [
+            {
+              "id": "D6-C3-E1",
+              "description": "Select one GTM OS feature and write its acceptance criteria."
+            },
+            {
+              "id": "D6-C3-E2",
+              "description": "Create a feature branch and implementation plan."
+            },
+            {
+              "id": "D6-C3-E3",
+              "description": "Build a working vertical slice with Claude Code."
+            },
+            {
+              "id": "D6-C3-E4",
+              "description": "Run tests, review changes and prepare a pull request."
+            }
+          ]
+        },
+        {
+          "id": "D6-C4",
+          "title": "Capstone demonstration",
+          "lesson_id": "L24",
+          "practical_exercises": [
+            {
+              "id": "D6-C4-E1",
+              "description": "Demonstrate the finished feature end to end."
+            },
+            {
+              "id": "D6-C4-E2",
+              "description": "Explain its files, architecture and data flow."
+            },
+            {
+              "id": "D6-C4-E3",
+              "description": "Diagnose one issue and implement one small change."
+            },
+            {
+              "id": "D6-C4-E4",
+              "description": "Merge or deploy the validated version and document the outcome."
+            }
+          ]
+        }
+      ],
+      "assessment": "Independently demonstrate a GTM OS feature, explain how it works, make a change and troubleshoot a problem."
+    }
+  ]
+}

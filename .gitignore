@@ -1,0 +1,25 @@
+# Dependencies & build output
+node_modules/
+client/dist/
+
+# Secrets — never commit API keys
+.env
+.env.*
+!.env.example
+
+# Private learner data: databases, backups and exports contain tutoring transcripts
+data/db/
+data/backups/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+command-centre-export-*.json
+
+# Local scratch & tooling
+server/.scratch/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

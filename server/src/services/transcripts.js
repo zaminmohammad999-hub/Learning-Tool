@@ -1,0 +1,341 @@
+import crypto from 'node:crypto';
+import { getDb, nowIso, tx } from '../db/connection.js';
+import { config } from '../config.js';
+import { HttpError, notFound, audit, parseJson } from './common.js';
+
+const db = () => getDb();
+
+export const ALLOWED_EXTENSIONS = ['.txt', '.md', '.vtt', '.srt'];
+const MAX_SEGMENT_CHARS = 1200;
+
+export function normaliseForChecksum(text) {
+  return text.replace(/\r\n?/g, '\n').trim();
+}
+
+export function checksumOf(text) {
+  return crypto.createHash('sha256').update(normaliseForChecksum(text)).digest('hex');
+}
+
+export function detectFormat(filename, text) {
+  const ext = filename ? filename.slice(filename.lastIndexOf('.')).toLowerCase() : '';
+  if (filename && !ALLOWED_EXTENSIONS.includes(ext))
+    throw new HttpError(415, `Unsupported file type "${ext}". Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`);
+  if (ext === '.vtt' || /^﻿?WEBVTT/.test(text)) return 'vtt';
+  if (ext === '.srt' || /^﻿?\s*\d+\s*\r?\n\d{2}:\d{2}:\d{2},\d{3}\s*-->/.test(text)) return 'srt';
+  if (ext === '.md') return 'md';
+  return 'txt';
+}
+
+export function validateTranscriptText(text) {
+  if (typeof text !== 'string' || !text.trim()) throw new HttpError(400, 'Transcript text is empty');
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > config.maxTranscriptBytes)
+    throw new HttpError(413, `Transcript is ${bytes} bytes; the limit is ${config.maxTranscriptBytes}. Split it into parts and upload each.`);
+  if (text.includes('\u0000')) throw new HttpError(415, 'File appears to be binary, not plain text');
+}
+
+/** Iterate lines with their absolute character offsets in the original text. */
+function linesWithOffsets(text) {
+  const out = [];
+  const re = /[^\n]*(\n|$)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0] === '' && m.index >= text.length) break;
+    const raw = m[0].replace(/\n$/, '').replace(/\r$/, '');
+    out.push({ text: raw, start: m.index, end: m.index + raw.length });
+    if (m[0] === '') re.lastIndex++;
+  }
+  return out;
+}
+
+const TIME_PREFIX = /^\s*[[(]?((?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?)[\])]?\s*[-–—]?\s*/;
+const SPEAKER_PREFIX = /^((?:[A-Za-z][\w.'’-]*)(?:\s+[A-Za-z][\w.'’-]*){0,3})\s*:\s+(?=\S)/;
+const ZOOM_HEADER = /^\s*\[([^\]]{1,60})\]\s+((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$/;
+const NAME_TIME_HEADER = /^\s*([A-Za-z][\w.'’ -]{0,40}?)\s{2,}((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$/;
+
+function splitLong(seg) {
+  if (seg.text.length <= MAX_SEGMENT_CHARS) return [seg];
+  const parts = [];
+  let offset = 0;
+  const sentences = seg.text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [seg.text];
+  let buf = '';
+  let bufStart = 0;
+  for (const s of sentences) {
+    if (buf.length + s.length > MAX_SEGMENT_CHARS && buf) {
+      parts.push({ ...seg, text: buf.trim(), start_char: seg.start_char + bufStart, end_char: seg.start_char + bufStart + buf.length });
+      bufStart = offset;
+      buf = '';
+    }
+    buf += s;
+    offset += s.length;
+  }
+  if (buf.trim()) parts.push({ ...seg, text: buf.trim(), start_char: seg.start_char + bufStart, end_char: seg.start_char + bufStart + buf.length });
+  return parts;
+}
+
+function parsePlain(text) {
+  const segs = [];
+  let speaker = null;
+  let timecode = null;
+  for (const line of linesWithOffsets(text)) {
+    let body = line.text;
+    if (!body.trim()) continue;
+    const zoom = body.match(ZOOM_HEADER) || body.match(NAME_TIME_HEADER);
+    if (zoom) {
+      speaker = zoom[1].trim();
+      timecode = zoom[2];
+      continue;
+    }
+    let consumed = 0;
+    const t = body.match(TIME_PREFIX);
+    if (t) {
+      timecode = t[1];
+      consumed += t[0].length;
+      body = body.slice(t[0].length);
+    }
+    const s = body.match(SPEAKER_PREFIX);
+    if (s && !/^(https?|ftp)$/i.test(s[1])) {
+      speaker = s[1].trim();
+      consumed += s[0].length;
+      body = body.slice(s[0].length);
+    }
+    if (!body.trim()) continue;
+    segs.push({ speaker, timecode, start_char: line.start + consumed, end_char: line.end, text: body.trim() });
+  }
+  return segs;
+}
+
+function parseCues(text) {
+  const segs = [];
+  const lines = linesWithOffsets(text);
+  let i = 0;
+  while (i < lines.length) {
+    const tm = lines[i].text.match(/^\s*((?:\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3})\s*-->\s*((?:\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3})/);
+    if (!tm) {
+      i++;
+      continue;
+    }
+    const timecode = tm[1].replace(',', '.');
+    i++;
+    while (i < lines.length && lines[i].text.trim()) {
+      let body = lines[i].text;
+      let speaker = null;
+      const v = body.match(/^<v(?:\.[^ >]+)?\s+([^>]+)>/);
+      if (v) speaker = v[1].trim();
+      body = body.replace(/<[^>]+>/g, '');
+      const s = !speaker && body.match(SPEAKER_PREFIX);
+      if (s) {
+        speaker = s[1].trim();
+        body = body.slice(s[0].length);
+      }
+      if (body.trim()) segs.push({ speaker, timecode, start_char: lines[i].start, end_char: lines[i].end, text: body.trim() });
+      i++;
+    }
+  }
+  // Consecutive cues from the same speaker often split sentences; leave them separate for precise citations.
+  return segs;
+}
+
+export function parseTranscript(text, format) {
+  const raw = format === 'vtt' || format === 'srt' ? parseCues(text) : parsePlain(text);
+  return raw.flatMap(splitLong).map((s, i) => ({ ...s, seq: i + 1 }));
+}
+
+/** Speaker role classification using configured names and common labels. */
+export function speakerRole(speaker, { tutorName, learnerName } = {}) {
+  if (!speaker) return 'unknown';
+  const s = speaker.toLowerCase();
+  if (tutorName && s === tutorName.toLowerCase()) return 'tutor';
+  if (learnerName && s === learnerName.toLowerCase()) return 'learner';
+  if (/\b(tutor|teacher|instructor|coach|mentor)\b/.test(s)) return 'tutor';
+  if (/\b(learner|student|me|trainee)\b/.test(s)) return 'learner';
+  return 'unknown';
+}
+
+// ───────────── Sessions ─────────────
+
+export function createSession(input, actor) {
+  return tx((d) => {
+    const now = nowIso();
+    const info = d
+      .prepare(
+        'INSERT INTO tutoring_sessions (session_date, duration_minutes, tutor, title, speaker_notes, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(input.session_date, input.duration_minutes ?? null, input.tutor ?? null, input.title ?? null, input.speaker_notes ?? null, input.notes ?? null, now, now);
+    const id = Number(info.lastInsertRowid);
+    setSessionLessons(id, input.lesson_ids || []);
+    audit('tutoring_session', id, 'create', undefined, input, actor);
+    return getSession(id);
+  });
+}
+
+function setSessionLessons(sessionId, lessonIds) {
+  const d = db();
+  for (const lid of lessonIds) if (!d.prepare('SELECT 1 FROM lessons WHERE id = ?').get(lid)) throw new HttpError(400, `Unknown lesson ${lid}`);
+  d.prepare('DELETE FROM session_lessons WHERE session_id = ?').run(sessionId);
+  const ins = d.prepare('INSERT INTO session_lessons (session_id, lesson_id) VALUES (?, ?)');
+  [...new Set(lessonIds)].forEach((lid) => ins.run(sessionId, lid));
+}
+
+export function updateSession(id, patch, actor) {
+  const before = getSession(id);
+  return tx((d) => {
+    const f = ['session_date', 'duration_minutes', 'tutor', 'title', 'speaker_notes', 'notes'];
+    const next = {};
+    f.forEach((k) => (next[k] = patch[k] === undefined ? before[k] : patch[k]));
+    d.prepare(
+      'UPDATE tutoring_sessions SET session_date=?, duration_minutes=?, tutor=?, title=?, speaker_notes=?, notes=?, updated_at=? WHERE id=?'
+    ).run(...f.map((k) => next[k]), nowIso(), id);
+    if (patch.lesson_ids) setSessionLessons(id, patch.lesson_ids);
+    audit('tutoring_session', id, 'update', before, { ...next, lesson_ids: patch.lesson_ids }, actor);
+    return getSession(id);
+  });
+}
+
+export function deleteSession(id, actor) {
+  const before = getSession(id);
+  tx((d) => {
+    d.prepare('DELETE FROM transcript_segments WHERE transcript_id IN (SELECT id FROM transcripts WHERE session_id = ?)').run(id);
+    d.prepare('DELETE FROM tutoring_sessions WHERE id = ?').run(id);
+  });
+  audit('tutoring_session', id, 'delete', { session_date: before.session_date, title: before.title, transcripts: before.transcripts.length }, undefined, actor);
+}
+
+export function listSessions() {
+  return db()
+    .prepare(
+      `SELECT s.*, (SELECT group_concat(lesson_id) FROM session_lessons sl WHERE sl.session_id = s.id) AS lesson_ids_csv,
+        (SELECT COUNT(*) FROM transcripts t WHERE t.session_id = s.id) AS transcript_count,
+        (SELECT COUNT(*) FROM evidence_matches m JOIN transcripts t ON t.id = m.transcript_id WHERE t.session_id = s.id AND m.review_status='pending') AS pending_matches,
+        (SELECT COUNT(*) FROM exercise_evidence ev WHERE ev.session_id = s.id) AS approved_evidence
+       FROM tutoring_sessions s ORDER BY s.session_date DESC, s.id DESC`
+    )
+    .all()
+    .map((s) => ({ ...s, lesson_ids: s.lesson_ids_csv ? s.lesson_ids_csv.split(',') : [] }));
+}
+
+export function getSession(id) {
+  const s = db().prepare('SELECT * FROM tutoring_sessions WHERE id = ?').get(id);
+  if (!s) throw notFound(`Session ${id}`);
+  const lessons = db()
+    .prepare('SELECT l.id, l.number, l.title, l.competency_id FROM session_lessons sl JOIN lessons l ON l.id = sl.lesson_id WHERE sl.session_id = ? ORDER BY l.number')
+    .all(id);
+  const transcripts = db()
+    .prepare(
+      `SELECT t.id, t.filename, t.format, t.char_count, t.segment_count, t.checksum, t.created_at,
+        (SELECT COUNT(*) FROM transcript_analyses a WHERE a.transcript_id = t.id) AS analysis_count
+       FROM transcripts t WHERE t.session_id = ? ORDER BY t.id`
+    )
+    .all(id);
+  const feedback = db().prepare('SELECT * FROM tutor_feedback WHERE session_id = ? ORDER BY id DESC').all(id);
+  const homework = db().prepare('SELECT * FROM homework WHERE session_id = ? ORDER BY id DESC').all(id);
+  const evidence = db()
+    .prepare('SELECT ev.*, e.description FROM exercise_evidence ev JOIN practical_exercises e ON e.id = ev.exercise_id WHERE ev.session_id = ? ORDER BY ev.exercise_id')
+    .all(id);
+  const approvals = db()
+    .prepare(
+      `SELECT ad.*, m.exercise_id, m.snippet FROM approval_decisions ad JOIN evidence_matches m ON m.id = ad.match_id
+       JOIN transcripts t ON t.id = m.transcript_id WHERE t.session_id = ? ORDER BY ad.id DESC`
+    )
+    .all(id);
+  return {
+    ...s,
+    lesson_ids: lessons.map((l) => l.id),
+    lessons,
+    transcripts,
+    feedback: feedback.map((f) => ({ ...f, exercise_ids: parseJson(f.exercise_ids_json, []) })),
+    homework,
+    evidence,
+    approvals,
+  };
+}
+
+// ───────────── Transcripts ─────────────
+
+export function addTranscript({ session_id, text, filename }, actor) {
+  validateTranscriptText(text);
+  getSession(session_id);
+  const format = detectFormat(filename, text);
+  const checksum = checksumOf(text);
+  const dup = db().prepare('SELECT id, session_id FROM transcripts WHERE checksum = ?').get(checksum);
+  if (dup)
+    throw new HttpError(409, `This transcript was already imported (transcript #${dup.id}, session #${dup.session_id}).`, {
+      transcript_id: dup.id,
+      session_id: dup.session_id,
+    });
+  const segments = parseTranscript(text, format);
+  if (!segments.length) throw new HttpError(400, 'No readable transcript lines were found');
+  return tx((d) => {
+    const info = d
+      .prepare(
+        'INSERT INTO transcripts (session_id, filename, format, original_text, checksum, char_count, segment_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(session_id, filename || null, format, text, checksum, text.length, segments.length, nowIso());
+    const tid = Number(info.lastInsertRowid);
+    const ins = d.prepare(
+      'INSERT INTO transcript_segments (transcript_id, seq, speaker, timecode, start_char, end_char, text) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    segments.forEach((s) => ins.run(tid, s.seq, s.speaker, s.timecode, s.start_char, s.end_char, s.text));
+    audit('transcript', tid, 'import', undefined, { session_id, filename, format, checksum, segments: segments.length }, actor);
+    return getTranscript(tid);
+  });
+}
+
+export function getTranscript(id, { includeSegments = true } = {}) {
+  const t = db().prepare('SELECT * FROM transcripts WHERE id = ?').get(id);
+  if (!t) throw notFound(`Transcript ${id}`);
+  const analyses = db()
+    .prepare('SELECT id, version, method, model, status, chunk_count, error, created_at FROM transcript_analyses WHERE transcript_id = ? ORDER BY version DESC')
+    .all(id);
+  const segments = includeSegments
+    ? db().prepare('SELECT seq, speaker, timecode, start_char, end_char, text FROM transcript_segments WHERE transcript_id = ? ORDER BY seq').all(id)
+    : undefined;
+  return { ...t, analyses, segments };
+}
+
+export function getSegments(transcriptId) {
+  return db().prepare('SELECT * FROM transcript_segments WHERE transcript_id = ? ORDER BY seq').all(transcriptId);
+}
+
+export function deleteTranscript(id, actor) {
+  const t = getTranscript(id, { includeSegments: false });
+  tx((d) => {
+    d.prepare('DELETE FROM transcript_segments WHERE transcript_id = ?').run(id);
+    d.prepare('DELETE FROM transcripts WHERE id = ?').run(id);
+  });
+  audit('transcript', id, 'delete', { session_id: t.session_id, filename: t.filename, checksum: t.checksum }, undefined, actor);
+}
+
+/** Full-text search across stored transcript segments (SQLite FTS5). */
+export function searchSegments(query, { limit = 12, sessionId } = {}) {
+  const terms = (query.toLowerCase().match(/[a-z0-9][a-z0-9.\-_]*/g) || [])
+    .map((t) => t.replace(/^[.\-_]+|[.\-_]+$/g, ''))
+    .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+  if (!terms.length) return [];
+  const fts = [...new Set(terms)].map((t) => `"${t.replace(/"/g, '')}"`).join(' OR ');
+  const args = [fts];
+  let extra = '';
+  if (sessionId) {
+    extra = 'AND t.session_id = ?';
+    args.push(sessionId);
+  }
+  args.push(limit);
+  return db()
+    .prepare(
+      `SELECT seg.id, seg.transcript_id, seg.seq, seg.speaker, seg.timecode, seg.text, t.session_id, s.session_date, s.tutor, s.title AS session_title,
+              (SELECT group_concat(lesson_id) FROM session_lessons sl WHERE sl.session_id = s.id) AS lesson_ids,
+              bm25(segments_fts) AS score
+       FROM segments_fts JOIN transcript_segments seg ON seg.id = segments_fts.rowid
+       JOIN transcripts t ON t.id = seg.transcript_id JOIN tutoring_sessions s ON s.id = t.session_id
+       WHERE segments_fts MATCH ? ${extra} ORDER BY score LIMIT ?`
+    )
+    .all(...args);
+}
+
+export const STOPWORDS = new Set(
+  `a an the and or but if then else when what which who whom whose why how did do does done have has had we us our you your i me my
+   it its is are was were be been being to of in on at for from by with about into over under again further once here there all any
+   both each few more most other some such no nor not only own same so than too very can will just should now cover covered
+   missed miss next tutor lesson session sessions lessons yet ever this that these those they them their please tell show give
+   keep recurring recur mistakes mistake demonstrate demonstrated learn learned learnt taught teach practise practice`.split(/\s+/)
+);

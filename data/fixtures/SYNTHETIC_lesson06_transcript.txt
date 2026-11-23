@@ -1,0 +1,21 @@
+[00:00:00] Disclaimer: SYNTHETIC TRANSCRIPT FOR TESTING AND DEMO ONLY. This is not a real tutoring session and contains no real people.
+[00:00:05] Tutor: Welcome back. Today is lesson 6, remote repository operations on GitHub.
+[00:01:10] Tutor: First, on GitHub click New and create a private repo called practice-site.
+[00:02:30] Learner: Okay, I made the repository and left it private.
+[00:03:05] Tutor: Now copy the HTTPS URL. In the VS Code terminal, run git clone with that URL.
+[00:03:40] Learner: PS C:\Users\learner\projects> git clone https://github.com/example/practice-site.git
+[00:03:42] Learner: Cloning into 'practice-site'...
+[00:04:10] Tutor: Good. That worked. Notice it created a folder on your computer with the whole history.
+[00:05:00] Learner: Why does it say origin everywhere?
+[00:05:20] Tutor: Origin is just the default name for the remote you cloned from. We'll look at git remote -v next session.
+[00:07:15] Tutor: Edit the README, commit it, and then push it to origin.
+[00:08:02] Learner: PS C:\Users\learner\projects\practice-site> git push origin main
+[00:08:05] Learner: Enumerating objects: 5, done. Writing objects: 100% (3/3), done.
+[00:09:30] Tutor: Great, now change the README on the GitHub website and then git pull to bring it down.
+[00:10:12] Learner: I ran git pull and it says Fast-forward.
+[00:11:00] Learner: I got an error earlier, permission denied, when I tried pushing before signing in.
+[00:11:30] Tutor: Remember the credential manager pop-up handles that the first time. Be careful not to paste tokens into chat.
+[00:55:00] Tutor: We ran out of time, so we didn't get to git fetch. We'll do fetch next time.
+[00:56:10] Tutor: For homework, before next session clone a second repo and push one small change.
+[00:57:00] Learner: Is fetch basically the same as pull?
+[00:57:20] Tutor: Not quite — let's come back to that next lesson.
