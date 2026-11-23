@@ -327,4 +327,59 @@ CREATE TABLE audit_log (
 CREATE INDEX ix_audit_entity ON audit_log(entity_type, entity_id);
 `,
   },
+  {
+    version: 2,
+    name: 'automation: calendar, folder watcher, translation',
+    sql: `
+-- Calendar occurrences pulled from the learner's private iCal feed (re-synced; the feed is the source of truth).
+CREATE TABLE calendar_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  summary TEXT,
+  lesson_id TEXT REFERENCES lessons(id),
+  assigned_by TEXT CHECK (assigned_by IN ('title','sequence','transcript','user')),
+  cancelled INTEGER NOT NULL DEFAULT 0,
+  synced_at TEXT NOT NULL,
+  UNIQUE (uid, starts_at)
+);
+CREATE INDEX ix_calendar_start ON calendar_events(starts_at);
+ALTER TABLE lesson_progress ADD COLUMN schedule_source TEXT;
+ALTER TABLE lesson_progress ADD COLUMN scheduled_time TEXT;
+
+-- Files seen in the watched transcripts folder (e.g. Hearsay output). File content is NOT stored here.
+CREATE TABLE watched_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL UNIQUE,
+  filename TEXT NOT NULL,
+  size INTEGER,
+  mtime TEXT,
+  recorded_at TEXT,
+  duration_minutes INTEGER,
+  status TEXT NOT NULL CHECK (status IN ('waiting','imported','needs_review','ignored','duplicate','error')),
+  reason TEXT,
+  transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
+  session_id INTEGER REFERENCES tutoring_sessions(id) ON DELETE SET NULL,
+  lesson_id TEXT REFERENCES lessons(id),
+  calendar_event_id INTEGER REFERENCES calendar_events(id) ON DELETE SET NULL,
+  pipeline_json TEXT,
+  detected_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Translation: the immutable original stays in transcripts.original_text. Segments hold the
+-- English working text, with the source-language text kept alongside in source_text.
+ALTER TABLE transcripts ADD COLUMN language TEXT;
+ALTER TABLE transcripts ADD COLUMN translation_status TEXT;
+ALTER TABLE transcripts ADD COLUMN translation_model TEXT;
+ALTER TABLE transcripts ADD COLUMN translated_at TEXT;
+ALTER TABLE transcripts ADD COLUMN recorded_at TEXT;
+ALTER TABLE transcript_segments ADD COLUMN source_text TEXT;
+CREATE TRIGGER segments_au AFTER UPDATE OF text, speaker ON transcript_segments BEGIN
+  INSERT INTO segments_fts(segments_fts, rowid, text, speaker) VALUES ('delete', old.id, old.text, coalesce(old.speaker,''));
+  INSERT INTO segments_fts(rowid, text, speaker) VALUES (new.id, new.text, coalesce(new.speaker,''));
+END;
+`,
+  },
 ];

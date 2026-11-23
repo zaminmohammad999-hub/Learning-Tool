@@ -233,6 +233,9 @@ export function updateLessonProgress(id, patch, actor) {
       `UPDATE lesson_progress SET status=?, scheduled_date=?, held_date=?, tutor=?, objectives=?, homework_text=?, notes=?, updated_at=? WHERE lesson_id=?`
     )
     .run(...fields.map((f) => next[f]), nowIso(), id);
+  // A date typed in by the learner always wins over calendar sync from then on.
+  if (patch.scheduled_date !== undefined && actor !== 'calendar-sync')
+    db().prepare("UPDATE lesson_progress SET schedule_source = ?, scheduled_time = NULL WHERE lesson_id = ?").run(next.scheduled_date ? 'manual' : null, id);
   audit('lesson_progress', id, 'update', before, next, actor);
   return getLesson(id);
 }
@@ -241,7 +244,7 @@ export function getSchedule() {
   const start = getSetting('programme_start_date');
   const lessons = db()
     .prepare(
-      `SELECT l.*, lp.status, lp.scheduled_date, lp.held_date, lp.tutor, cc.title AS competency_title, d.name AS domain_name,
+      `SELECT l.*, lp.status, lp.scheduled_date, lp.scheduled_time, lp.schedule_source, lp.held_date, lp.tutor, cc.title AS competency_title, d.name AS domain_name,
         (SELECT COUNT(*) FROM session_lessons sl WHERE sl.lesson_id = l.id) AS session_count,
         (SELECT COUNT(*) FROM session_lessons sl JOIN transcripts t ON t.session_id = sl.session_id WHERE sl.lesson_id = l.id) AS transcript_count
        FROM lessons l JOIN lesson_progress lp ON lp.lesson_id = l.id JOIN core_competencies cc ON cc.id = l.competency_id

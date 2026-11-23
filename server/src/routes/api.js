@@ -14,6 +14,10 @@ import * as data from '../services/data.js';
 import { aiStatus } from '../services/aiClient.js';
 import { suggestLessons } from '../services/ruleAnalyzer.js';
 import { getDb } from '../db/connection.js';
+import * as translation from '../services/translation.js';
+import * as automation from '../services/automation.js';
+import * as calendar from '../services/calendar.js';
+import { notify } from '../services/hearsayMonitor.js';
 
 export const api = express.Router();
 const id = (req) => {
@@ -139,7 +143,29 @@ api.post('/transcripts/:id/analyse', async (req, res) => {
   const body = parse(z.object({ method: z.enum(['rule_based', 'claude']).default('rule_based') }), req.body);
   res.status(201).json(await analysis.runAnalysis(id(req), body.method, actorOf(req)));
 });
+api.get('/transcripts/:id/translation-estimate', (req, res) => res.json(translation.translationEstimate(id(req))));
+api.post('/transcripts/:id/translate', async (req, res) => {
+  const tid = id(req);
+  const result = await translation.translateTranscript(tid, actorOf(req));
+  // Matching ran on the untranslated text; re-run the free rule-based pass on the English.
+  const a = parse(z.object({ reanalyse: z.boolean().default(true) }), req.body || {}).reanalyse ? await analysis.runAnalysis(tid, 'rule_based', actorOf(req)) : null;
+  res.json({ ...result, analysis_id: a?.id ?? null });
+});
 api.get('/analyses/:id', (req, res) => res.json(analysis.getAnalysis(id(req))));
+
+// ───────── Automation (folder watcher, calendar, Hearsay) ─────────
+api.get('/automation/status', (req, res) => res.json(automation.automationStatus()));
+api.post('/automation/scan', async (req, res) => res.json(await automation.scanFolder()));
+api.post('/automation/calendar/sync', async (req, res) => res.json(await calendar.syncCalendar({ actor: actorOf(req) })));
+api.post('/automation/files/:id/import', async (req, res) => {
+  const body = parse(z.object({ lesson_id: lessonId.nullable().optional() }), req.body || {});
+  res.status(201).json(await automation.importWatchedFile(id(req), { lesson_id: body.lesson_id || null, actor: actorOf(req) }));
+});
+api.post('/automation/files/:id/ignore', (req, res) => res.json(automation.ignoreWatchedFile(id(req), actorOf(req))));
+api.post('/automation/test-notification', (req, res) => {
+  notify('Command Centre test', 'Notifications are working. You will be reminded to start Hearsay before each lesson.');
+  res.json({ ok: true });
+});
 api.get('/review/pending', (req, res) => {
   const rows = getDb()
     .prepare(
@@ -287,7 +313,11 @@ api.post('/assistant/chat', async (req, res) => {
 
 // ───────── Settings & data ─────────
 api.get('/settings', (req, res) => res.json({ settings: getSettings(), ai: aiStatus(), mode: getMode() }));
-api.patch('/settings', (req, res) => res.json(data.updateSettings(parse(z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])), req.body), actorOf(req))));
+api.patch('/settings', (req, res) => {
+  const out = data.updateSettings(parse(z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])), req.body), actorOf(req));
+  automation.refreshFolderWatch();
+  res.json(out);
+});
 api.get('/export', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="command-centre-export-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json(data.exportData());

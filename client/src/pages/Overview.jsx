@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks.js';
+import AutomationPanel from '../components/AutomationPanel.jsx';
 import { Badge, Card, Empty, ErrorBox, Loading, MasteryBadge, ProgressBar, Stat, label } from '../components/ui.jsx';
 
 export default function Overview() {
@@ -41,6 +42,8 @@ export default function Overview() {
           )}
         </Stat>
       </div>
+
+      <AutomationPanel />
 
       {s.warnings.length > 0 && (
         <div className="section notice warn" role="status">

@@ -64,7 +64,49 @@ The database is seeded automatically on start. You can also run `npm run seed`. 
 
 **Without a key:** transcript import, the rule-based matcher, manual mapping, assessments, briefings and the search-based Q&A all keep working. The Q&A is clearly labelled "rule-based, no AI".
 
-## 4. Daily workflow
+## 4. Automate after-lesson updates (Hearsay + Google Calendar)
+
+Once this is set up, the app does the following around each lesson:
+
+1. **Before the lesson.** It reads your Google Calendar and fills in lesson dates and times. Ten minutes before a lesson, you get a Windows notification to start recording in Hearsay.
+2. **During the lesson.** It reads Hearsay's log. If Hearsay isn't recording after the start, or reports "no audio captured", you get a notification.
+3. **After the lesson.** When Hearsay saves `transcript_YYYYMMDD_HHMMSS.md`, the app:
+   - imports it into the lesson whose calendar slot the recording started in;
+   - translates Urdu to English with Claude, if enabled;
+   - runs the matcher;
+   - notifies you that proposed matches are ready.
+4. **You review the proposals** in Tutor Intelligence. **Coverage changes only when you approve a match.**
+
+**Hearsay can't be started automatically.** It has no command-line or hotkey trigger, so you still press Record yourself. The reminders cover that step.
+
+### Setup
+
+1. **Calendar:**
+   - Open Google Calendar → ⚙ Settings → your calendar → **Integrate calendar**.
+   - Copy the **Secret address in iCal format**.
+   - In `.env`, set `CALENDAR_ICS_URL=<that address>`, then restart the app.
+   - Treat the address like a password. It stays on the server and is never shown, logged or exported.
+2. **Lesson events:**
+   - Make sure your lesson events have a recognisable word in the title. The default keyword is **Vibe Coding**, and you can change it in Settings → Automation. Only events whose title contains the keyword are read.
+   - To pin an event to a specific lesson, include "Lesson 7" (or "L07") in its title. Otherwise, upcoming events are matched in order to lessons not yet held.
+   - Dates you type in yourself are never overwritten.
+3. **Hearsay folder:**
+   - Go to **Settings → Automation**.
+   - Set the folder (Hearsay's default is `C:\Users\<you>\Documents\Hearsay`) and tick **Watch this folder**.
+   - Files already in the folder at that moment are left alone.
+   - A new recording that didn't start during a calendar lesson waits on the Overview, where you **Import** it (choosing the lesson) or **Ignore** it.
+4. **Translation (Claude):** tick **Translate Urdu transcripts automatically** and set a spend limit per step.
+   - The default translation model is `claude-sonnet-5-5`. A one-hour lesson typically costs a few tens of cents.
+   - The original file is stored unchanged. Each line keeps its Urdu text next to the English, and you can see both in Session History.
+   - If AI is off, transcripts are still imported, and Session History shows a **Translate to English** button with a cost estimate.
+5. **Hearsay settings:**
+   - Set **Audio source: both** (microphone + system audio), so the tutor's voice is captured.
+   - Keep **Language: Urdu**.
+   - Hearsay's `small` model often mis-hears technical words. A larger model gives better Urdu, if your PC can run it. The translation step also corrects common phonetic spellings, for example "گیٹ ہب" becomes GitHub.
+
+Automation pauses while you're in demo mode.
+
+## 5. Daily workflow
 
 ### Paste or upload a transcript
 
@@ -122,7 +164,7 @@ These are never mixed:
 | Domain assessment result | Practical Assessments |
 | Competency mastered → **verified mastery** (x/24) | Practical Assessments → Verify Pass |
 
-## 5. Back up your data
+## 6. Back up your data
 
 Go to **Settings & Data → Backup, export & import**:
 
@@ -148,7 +190,7 @@ Note: the project lives in a OneDrive folder. Avoid OneDrive syncing the live da
 
 **Demo mode** switches to a separate `demo.sqlite` file filled with clearly labelled synthetic data. A banner shows on every page, and real records are never touched.
 
-## 6. Tests
+## 7. Tests
 
 ```powershell
 npm test
@@ -156,7 +198,7 @@ npm test
 
 This runs both suites:
 
-**Server** (`node:test` + supertest, 20 tests):
+**Server** (`node:test` + supertest, 26 tests):
 
 - Curriculum counts, the Lesson 6 mapping and the domain assessment schedule
 - Persistence across restarts, and seed idempotency
@@ -166,6 +208,7 @@ This runs both suites:
 - The no-AI fallback, plus a fake Claude client used to test quote and hallucination filtering and citation validation
 - Mastery gating, verification, reassessment and retakes
 - Export / import, briefing updates and demo-mode isolation
+- Automation: Hearsay parsing, Urdu detection, calendar recurrence and keyword filtering, folder-watch safety gates, translation (mocked Claude), cost caps, reminders and the secret calendar URL never leaking
 
 **Client** (Vitest + Testing Library):
 
@@ -175,7 +218,7 @@ This runs both suites:
 
 The sample transcript `data/fixtures/SYNTHETIC_lesson06_transcript.txt` is synthetic and labelled as such.
 
-## 7. Project layout
+## 8. Project layout
 
 ```
 data/vibe_coding_curriculum.json   canonical seed (source of truth, version-controlled)
@@ -197,7 +240,7 @@ client/src/pages/                  Overview, Curriculum, Schedule, Intelligence,
 | POST | `/api/transcripts`, `/api/transcripts/:id/analyse`, `/api/matches/:id/decision`, `/api/assessments/attempts`, `/api/assessments/verify`, `/api/assistant/chat`, `/api/import` |
 | CRUD | `/api/sessions`, `/api/feedback`, `/api/homework` |
 
-## 8. Known limitations
+## 9. Known limitations
 
 - **Rule-based matcher:** it uses keyword heuristics, so expect some false positives, such as "origin" in a push command suggesting D2-C2-E4. That is why every match needs review.
 - **Claude analysis:** it is implemented and unit-tested against a mocked client, but it has **not been run against the live API** in this repository. Try it on one transcript after adding your key.
@@ -205,3 +248,8 @@ client/src/pages/                  Overview, Curriculum, Schedule, Intelligence,
 - **Deleting a transcript:** this removes its evidence, but exercise statuses it raised are kept (the change is recorded in the audit log). Adjust them manually if needed.
 - **Demo mode:** it resets to your real data whenever the server restarts.
 - **Single user:** there is no login. It is intended for one learner on one machine.
+- **Automation:**
+  - It only runs while the app is running. Start `npm start` before lessons, or add it to Windows startup.
+  - Language detection spots Urdu script, but not Roman Urdu (Urdu typed in Latin letters).
+  - The Claude translation step is tested against a mocked client only.
+  - Hearsay transcripts have no per-line timestamps, so citations show line numbers.

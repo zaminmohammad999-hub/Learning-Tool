@@ -4,7 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Tests never use a real key or the real database.
-delete process.env.ANTHROPIC_API_KEY;
+// Set (not delete) so dotenv can never load the real values from .env during tests.
+process.env.ANTHROPIC_API_KEY = '';
+process.env.CALENDAR_ICS_URL = '';
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-test-'));
 process.env.BACKUP_DIR = path.join(tmpRoot, 'backups');
 

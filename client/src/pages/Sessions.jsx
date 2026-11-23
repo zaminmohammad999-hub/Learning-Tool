@@ -6,11 +6,56 @@ import { useAppContext } from '../App.jsx';
 import AnalysisReview from '../components/AnalysisReview.jsx';
 import { Badge, Card, Empty, ErrorBox, Field, Loading, label } from '../components/ui.jsx';
 
+const LANG = { ur: 'Urdu', en: 'English', unknown: 'unknown language' };
+
+/** Translation status + "Translate to English" with a cost estimate shown before anything is sent. */
+function TranslationBar({ t, ai, onDone }) {
+  const needs = ['needed', 'failed', 'running'].includes(t.translation_status);
+  const translated = ['done', 'partial'].includes(t.translation_status);
+  const { data: est } = useApi(needs || translated ? `/transcripts/${t.id}/translation-estimate` : null);
+  const act = useAction();
+  if (!needs && !translated) return null;
+  return (
+    <div className={`notice ${needs ? 'warn' : ''}`} style={{ margin: '8px 0', fontSize: '0.88rem' }}>
+      <div className="row between">
+        <span>
+          {translated ? (
+            <>
+              Translated from {LANG[t.language] || t.language} to English{t.translation_status === 'partial' ? ' (some lines kept in the original)' : ''} with {t.translation_model} on {t.translated_at?.slice(0, 10)}. Matching, search and citations use the English; the original file is unchanged.
+            </>
+          ) : (
+            <>
+              This transcript is in <strong>{LANG[t.language] || t.language}</strong>. Translate it to English so lessons can be matched and searched.
+              {t.translation_status === 'failed' && ' The last attempt failed.'}
+            </>
+          )}
+        </span>
+        <button
+          className="btn small"
+          disabled={act.busy || !ai?.available}
+          title={ai?.available ? '' : ai?.reason || 'Enable Claude in Settings'}
+          onClick={() => {
+            const cost = est?.approx_usd != null ? ` (about $${est.approx_usd} with ${est.model})` : '';
+            if (window.confirm(`Send this transcript to Claude for translation${cost}? Then the free rule-based matcher runs again on the English.`))
+              act.run(async () => onDone(await api.post(`/transcripts/${t.id}/translate`, {})));
+          }}
+        >
+          {act.busy ? 'Translating…' : translated ? 'Re-translate' : 'Translate to English'}
+          {est?.approx_usd != null && !act.busy && ` · ~$${est.approx_usd}`}
+        </button>
+      </div>
+      {!ai?.available && <div className="faint" style={{ marginTop: 4 }}>{ai?.reason}</div>}
+      <ErrorBox error={act.error} />
+    </div>
+  );
+}
+
 function TranscriptPanel({ transcriptId, onChanged }) {
   const { health } = useAppContext();
   const { data: t, error, loading, reload } = useApi(`/transcripts/${transcriptId}`);
   const [analysisId, setAnalysisId] = useState(null);
   const [filter, setFilter] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
   const { data: analysis, reload: reloadAnalysis } = useApi(analysisId ? `/analyses/${analysisId}` : null);
   const act = useAction();
   useEffect(() => {
@@ -41,15 +86,28 @@ function TranscriptPanel({ transcriptId, onChanged }) {
       <p className="faint" style={{ fontSize: '0.85rem' }}>
         {t.segment_count} lines · {t.char_count.toLocaleString()} characters · format {t.format} · imported {t.created_at.slice(0, 10)} · original preserved (checksum <code>{t.checksum.slice(0, 12)}…</code>)
       </p>
+      <TranslationBar t={t} ai={health?.ai} onDone={async (r) => { await reload(); if (r?.analysis_id) setAnalysisId(r.analysis_id); onChanged?.(); }} />
       <details>
         <summary>Full stored transcript</summary>
-        <input type="search" placeholder="Filter lines" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ margin: '8px 0', width: '100%' }} />
+        <div className="row" style={{ margin: '8px 0' }}>
+          <input type="search" placeholder="Filter lines" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+          {t.segments.some((s) => s.source_text) && (
+            <label className="row" style={{ fontSize: '0.85rem' }}>
+              <input type="checkbox" checked={showOriginal} onChange={(e) => setShowOriginal(e.target.checked)} /> Show original (Urdu) beside English
+            </label>
+          )}
+        </div>
         <div className="transcript-view">
           {lines.map((s) => (
             <div key={s.seq} className="line">
               <span className="faint mono">{s.timecode || `#${s.seq}`}</span>
               <strong style={{ fontSize: '0.82rem' }}>{s.speaker || ''}</strong>
-              <span>{s.text}</span>
+              <span>
+                {s.text}
+                {showOriginal && s.source_text && (
+                  <span dir="rtl" lang="ur" className="faint" style={{ display: 'block', marginTop: 2 }}>{s.source_text}</span>
+                )}
+              </span>
             </div>
           ))}
         </div>

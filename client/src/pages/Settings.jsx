@@ -4,6 +4,90 @@ import { useApi, useAction } from '../hooks.js';
 import { useAppContext, AiIndicator } from '../App.jsx';
 import { Badge, Card, ErrorBox, Field, Loading } from '../components/ui.jsx';
 
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : 'never');
+
+function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
+  const { data: st, reload } = useApi('/automation/status');
+  const bool = (k, d = 'false') => (s[k] ?? d) === 'true';
+  const toggle = (k) => (e) => setS({ ...s, [k]: e.target.checked ? 'true' : 'false' });
+  const keys = ['watch_enabled', 'watch_folder', 'calendar_keyword', 'auto_translate', 'auto_claude_analysis', 'auto_max_usd', 'reminders_enabled', 'translation_model'];
+  const after = (m) => {
+    done(m);
+    reload();
+  };
+  return (
+    <Card title="Automation: calendar, Hearsay & translation" className="automation-card">
+      <div className="stack" id="automation">
+        <p style={{ fontSize: '0.88rem', margin: 0 }}>
+          After each lesson, the server picks up the new transcript from your folder, translates it to English, and proposes matches for you to approve. <strong>Coverage only changes when you approve a match.</strong>
+        </p>
+
+        <strong>1. Calendar</strong>
+        <p className="faint" style={{ fontSize: '0.82rem', margin: 0 }}>
+          In Google Calendar → Settings → your calendar → <em>Integrate calendar</em>, copy the <em>Secret address in iCal format</em> and add <code>CALENDAR_ICS_URL=…</code> to <code>.env</code>, then restart. The address is a password: it stays on the server and is never shown, logged or exported.
+        </p>
+        <div className="row" style={{ fontSize: '0.88rem' }}>
+          {st?.calendar.configured ? <Badge status="pass">connected</Badge> : <Badge status="fail">not connected</Badge>}
+          <span className="faint">last sync {when(st?.calendar.last_sync)}</span>
+          {st?.calendar.configured && (
+            <button className="btn small" disabled={busy} onClick={() => run(async () => { const r = await api.post('/automation/calendar/sync'); after(`Calendar synced: ${r.occurrences} lesson event(s), ${r.lesson_dates_updated} lesson date(s) updated.`); })}>
+              Sync now
+            </button>
+          )}
+        </div>
+        {st?.calendar.last_error && <div className="error" style={{ fontSize: '0.85rem' }}>{st.calendar.last_error}</div>}
+        <Field label="Only events whose title contains (keeps private events out)">
+          <input type="text" value={s.calendar_keyword ?? 'Vibe Coding'} onChange={(e) => setS({ ...s, calendar_keyword: e.target.value })} />
+        </Field>
+        <p className="faint" style={{ fontSize: '0.8rem', margin: 0 }}>Put “Lesson 7” in an event title to pin it to a lesson; otherwise upcoming events are matched in order to lessons not yet held. Dates you typed in yourself are never changed.</p>
+        {st?.calendar.upcoming?.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem' }}>
+            {st.calendar.upcoming.slice(0, 4).map((o) => (
+              <li key={o.id}>{when(o.starts_at)}: {o.lesson_id ? `Lesson ${o.lesson_number}` : 'no lesson'} <span className="faint">({o.summary})</span></li>
+            ))}
+          </ul>
+        )}
+
+        <strong>2. Hearsay transcript folder</strong>
+        <Field label="Folder Hearsay saves .md transcripts to">
+          <input type="text" placeholder="C:\Users\you\Documents\Hearsay" value={s.watch_folder || ''} onChange={(e) => setS({ ...s, watch_folder: e.target.value.trim() })} />
+        </Field>
+        <label className="row"><input type="checkbox" checked={bool('watch_enabled')} onChange={toggle('watch_enabled')} /> Watch this folder for new recordings</label>
+        <p className="faint" style={{ fontSize: '0.8rem', margin: 0 }}>
+          Files already in the folder when you switch this on are left alone. A new recording is imported automatically only if it started during a lesson in your calendar; any other recording waits on the Overview for you to import or ignore.
+        </p>
+        {st && (
+          <div className="row" style={{ fontSize: '0.85rem' }}>
+            {st.watcher.enabled ? (st.watcher.folder_exists ? <Badge status="pass">watching</Badge> : <Badge status="fail">folder not found</Badge>) : <Badge>off</Badge>}
+            <span className="faint">Hearsay log: {st.hearsay.log_dir_found ? 'found' : 'not found'} · last scan {when(st.watcher.last_scan?.at)}</span>
+            {st.watcher.enabled && <button className="btn small" disabled={busy} onClick={() => run(async () => { await api.post('/automation/scan'); after('Folder scanned.'); })}>Scan now</button>}
+          </div>
+        )}
+
+        <strong>3. Translation & analysis</strong>
+        <label className="row"><input type="checkbox" checked={bool('auto_translate')} onChange={toggle('auto_translate')} /> Translate Urdu transcripts to English automatically (Claude)</label>
+        <label className="row"><input type="checkbox" checked={bool('auto_claude_analysis')} onChange={toggle('auto_claude_analysis')} /> Also run Claude analysis automatically (the free rule-based matcher always runs)</label>
+        <div className="grid cols-2">
+          <Field label="Automatic spend limit per step (US$)">
+            <input type="number" min={0} max={20} step={0.1} value={s.auto_max_usd ?? '1'} onChange={(e) => setS({ ...s, auto_max_usd: e.target.value })} />
+          </Field>
+          <Field label="Translation model">
+            <input type="text" placeholder="claude-sonnet-5-5" value={s.translation_model || ''} onChange={(e) => setS({ ...s, translation_model: e.target.value.trim() })} />
+          </Field>
+        </div>
+        {!ai.available && <div className="notice" style={{ fontSize: '0.85rem' }}>Claude is not enabled ({ai.reason}) Transcripts will still be imported and matched, but Urdu ones stay untranslated until you enable AI and press Translate.</div>}
+
+        <strong>4. Recording reminders</strong>
+        <label className="row"><input type="checkbox" checked={bool('reminders_enabled', 'true')} onChange={toggle('reminders_enabled')} /> Windows notifications: 10 min before a lesson, if Hearsay isn't recording once it starts, if Hearsay hears no audio, and to stop recording afterwards</label>
+        <div className="row">
+          <button className="btn primary" disabled={busy} onClick={() => save(keys).then(reload)}>Save automation settings</button>
+          <button className="btn" disabled={busy} onClick={() => run(async () => { await api.post('/automation/test-notification'); after('Test notification sent. If nothing appeared, check Windows notification settings for PowerShell.'); })}>Send test notification</button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const { refreshHealth } = useAppContext();
   const { data, error, loading, reload } = useApi('/settings');
@@ -88,6 +172,8 @@ export default function Settings() {
             <button className="btn primary" disabled={act.busy} onClick={() => save(['ai_enabled', 'ai_model', 'ai_effort', 'ai_max_chunk_chars', 'ai_max_chunks'])}>Save AI settings</button>
           </div>
         </Card>
+
+        <AutomationSettings s={s} setS={setS} ai={ai} save={save} busy={act.busy} run={act.run} done={done} />
 
         <Card title="Backup, export & import">
           <div className="stack">

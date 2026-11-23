@@ -20,6 +20,8 @@ const USER_TABLES = [
   ['session_lessons', null],
   ['transcripts', null],
   ['transcript_segments', null],
+  ['calendar_events', null],
+  ['watched_files', null],
   ['transcript_analyses', null],
   ['evidence_matches', null],
   ['approval_decisions', null],
@@ -45,6 +47,15 @@ const SETTING_RULES = {
   ai_max_chunk_chars: (v) => /^\d+$/.test(v) && Number(v) >= 2000 && Number(v) <= 200000,
   ai_max_chunks: (v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 200,
   transcript_retention_days: (v) => /^\d+$/.test(v) && Number(v) <= 3650,
+  // Automation (folder watching, calendar, translation, reminders)
+  watch_enabled: (v) => v === 'true' || v === 'false',
+  watch_folder: (v) => v === '' || (typeof v === 'string' && v.length <= 400 && path.isAbsolute(v) && !v.includes('\u0000')),
+  calendar_keyword: (v) => typeof v === 'string' && v.trim().length >= 3 && v.length <= 80,
+  auto_translate: (v) => v === 'true' || v === 'false',
+  auto_claude_analysis: (v) => v === 'true' || v === 'false',
+  auto_max_usd: (v) => /^\d+(\.\d{1,2})?$/.test(v) && Number(v) <= 20,
+  reminders_enabled: (v) => v === 'true' || v === 'false',
+  translation_model: (v) => v === '' || /^claude-[a-z0-9-]{2,60}$/.test(v),
 };
 
 export function updateSettings(patch, actor) {
@@ -56,6 +67,11 @@ export function updateSettings(patch, actor) {
     if (!SETTING_RULES[k](v)) throw new HttpError(400, `Invalid value for ${k}`);
     changes[k] = v;
   }
+  if (changes.watch_folder) changes.watch_folder = path.normalize(changes.watch_folder);
+  // Turning watching on (or pointing it at a new folder) starts the clock: files already there are left alone.
+  const turningOn = changes.watch_enabled === 'true' && before.watch_enabled !== 'true';
+  const newFolder = changes.watch_folder !== undefined && changes.watch_folder !== before.watch_folder;
+  if (turningOn || newFolder) changes.watch_since = nowIso();
   tx((d) => {
     const st = d.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
     for (const [k, v] of Object.entries(changes)) st.run(k, v);
