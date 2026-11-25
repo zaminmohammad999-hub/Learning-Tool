@@ -67,8 +67,8 @@ export default function App() {
       <div className="layout">
         <aside className="sidebar" aria-label="Main navigation">
           <div className="brand">
-            Vibe Coding Learning Command Centre
-            <small>12 weeks · 24 lessons · 96 exercises</small>
+            Learning Studio
+            <small>Vibe Coding &amp; AI Development · 12 weeks · 24 lessons</small>
           </div>
           <nav className="nav">
             {NAV.map(([to, key, text]) => (

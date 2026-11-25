@@ -1,4 +1,4 @@
-# Vibe Coding Learning Command Centre
+# Learning Studio
 
 A local dashboard for the 12-week **Vibe Coding & AI Development Mastery** programme. It tracks what was taught, what was practised, what is still missing, and which competencies have been **verified as mastered** through practical tests. The curriculum has 6 domains, 24 competencies, 96 exercises and 24 lessons of 60 minutes each.
 

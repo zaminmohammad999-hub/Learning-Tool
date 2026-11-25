@@ -163,7 +163,7 @@ api.post('/automation/files/:id/import', async (req, res) => {
 });
 api.post('/automation/files/:id/ignore', (req, res) => res.json(automation.ignoreWatchedFile(id(req), actorOf(req))));
 api.post('/automation/test-notification', (req, res) => {
-  notify('Command Centre test', 'Notifications are working. You will be reminded to start Hearsay before each lesson.');
+  notify('Learning Studio test', 'Notifications are working. You will be reminded to start Hearsay before each lesson.');
   res.json({ ok: true });
 });
 api.get('/review/pending', (req, res) => {
@@ -319,7 +319,7 @@ api.patch('/settings', (req, res) => {
   res.json(out);
 });
 api.get('/export', (req, res) => {
-  res.setHeader('Content-Disposition', `attachment; filename="command-centre-export-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="learning-studio-export-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json(data.exportData());
 });
 api.post('/import', (req, res) => res.json(data.importData(req.body, actorOf(req))));

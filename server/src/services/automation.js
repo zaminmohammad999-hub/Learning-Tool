@@ -198,7 +198,7 @@ export async function importWatchedFile(fileId, { lesson_id, actor = 'user', tex
   const pending = db().prepare("SELECT COUNT(*) n FROM evidence_matches WHERE transcript_id = ? AND review_status = 'pending'").get(t.id).n;
   notify(
     `${lesson_id ? `Lesson ${Number(lesson_id.slice(1))}` : 'New'} transcript imported`,
-    `${who().learner ? `${who().learner}, ` : ''}${pending} proposed match(es) from ${who().tutor ? `${who().tutor}'s lesson` : 'the lesson'} are ready to review in the Command Centre.${steps.some((x) => x.status === 'skipped' && x.step === 'translate') ? ' Translation still needed.' : ''}`
+    `${who().learner ? `${who().learner}, ` : ''}${pending} proposed match(es) from ${who().tutor ? `${who().tutor}'s lesson` : 'the lesson'} are ready to review in Learning Studio.${steps.some((x) => x.status === 'skipped' && x.step === 'translate') ? ' Translation still needed.' : ''}`
   );
   return { status: 'imported', transcript_id: t.id, session_id: session.id, steps };
 }

@@ -13,7 +13,7 @@ try {
 
 app.listen(config.port, config.host, () => {
   startAutomation();
-  console.log(`\nVibe Coding Learning Command Centre API on http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
+  console.log(`\nLearning Studio API on http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
   console.log(`Database: ${config.dbPath}`);
   console.log(`Claude API key: ${config.anthropicKeyPresent ? 'configured (enable AI in Settings)' : 'not set — AI features disabled, core tracking works'}`);
   if (config.host !== '127.0.0.1' && config.host !== 'localhost') console.warn('WARNING: HOST is not localhost — private transcripts may be reachable on your network.');

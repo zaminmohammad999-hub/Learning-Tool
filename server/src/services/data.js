@@ -6,6 +6,7 @@ import { config, DATA_DIR } from '../config.js';
 import { HttpError, audit, getSettings } from './common.js';
 
 const db = () => getDb();
+// Internal format id kept from the original name so existing backups still restore.
 export const BACKUP_FORMAT = 'vibe-coding-command-centre-backup';
 export const BACKUP_VERSION = 1;
 
@@ -102,7 +103,7 @@ function columnsOf(table) {
 }
 
 export function importData(payload, actor) {
-  if (!payload || payload.format !== BACKUP_FORMAT) throw new HttpError(400, 'Not a Command Centre backup file');
+  if (!payload || payload.format !== BACKUP_FORMAT) throw new HttpError(400, 'Not a Learning Studio backup file');
   if (payload.version !== BACKUP_VERSION) throw new HttpError(400, `Unsupported backup version ${payload.version}`);
   if (!payload.tables || typeof payload.tables !== 'object') throw new HttpError(400, 'Backup has no tables');
   const warnings = [];
