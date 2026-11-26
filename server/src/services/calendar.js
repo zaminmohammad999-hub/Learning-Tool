@@ -33,7 +33,7 @@ async function fetchIcs() {
   if (!/^https:\/\//i.test(url)) throw new HttpError(400, 'CALENDAR_ICS_URL must be an https:// (or webcal://) address.');
   const resp = await fetch(url, { signal: AbortSignal.timeout(20000), redirect: 'follow' });
   // Never echo the URL in errors: it is a secret.
-  if (!resp.ok) throw new HttpError(502, `Calendar feed returned HTTP ${resp.status}. Check CALENDAR_ICS_URL in .env.`);
+  if (!resp.ok) throw new HttpError(502, `Calendar feed returned HTTP ${resp.status}. Check CALENDAR_ICS_URL in server/.env.`);
   const text = await resp.text();
   if (text.length > MAX_ICS_BYTES) throw new HttpError(413, 'Calendar feed is larger than 5 MB.');
   if (!/BEGIN:VCALENDAR/.test(text)) throw new HttpError(502, 'Calendar address did not return iCal data. Use the "Secret address in iCal format".');
@@ -105,7 +105,7 @@ function setInternal(key, value) {
  * (not yet held/missed) lessons. Only lesson dates that are empty or came from the calendar are changed.
  */
 export async function syncCalendar({ now = new Date(), actor = 'calendar-sync' } = {}) {
-  if (!calendarConfigured()) throw new HttpError(400, 'No calendar connected. Add CALENDAR_ICS_URL to .env and restart the app.');
+  if (!calendarConfigured()) throw new HttpError(400, 'No calendar connected. Add CALENDAR_ICS_URL to server/.env and restart the app.');
   const keyword = calendarKeyword();
   if (keyword.length < 3) throw new HttpError(400, 'Set a lesson title keyword (3+ characters) in Settings, so private events are never imported.');
   let occurrences;

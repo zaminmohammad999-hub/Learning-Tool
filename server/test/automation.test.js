@@ -350,3 +350,67 @@ test('personalisation: Hearsay speakers shown as the learner and tutor names, an
   assert.equal(after.segments[1].text, 'Now run git clone.', 'copied speaker label removed');
   assert.equal(after.segments[1].speaker, 'Fariha');
 });
+
+test('an unfinished Hearsay file is never imported while recording, and an early partial import is replaced by the finished file', async () => {
+  const { app } = await makeApp();
+  const dir = tmpDir('partial');
+  const logDir = tmpDir('partial-log');
+  process.env.HEARSAY_LOG_DIR = logDir;
+  setNotifierForTests(() => {});
+  const now = new Date();
+  const lessonStart = new Date(now.getTime() - 50 * 60000);
+  setCalendarSourceForTests(async () => ics([{ uid: 'p@x', start: lessonStart, end: new Date(lessonStart.getTime() + 90 * 60000), summary: 'Vibe Coding' }]));
+  await request(app).patch('/api/settings').send({ watch_folder: dir, watch_enabled: 'true' }).expect(200);
+  await syncCalendar();
+
+  const rec = new Date(lessonStart.getTime() + 30000);
+  const file = path.join(dir, hearsayName(rec));
+  getDb().prepare("UPDATE settings SET value = ? WHERE key = 'watch_since'").run(lessonStart.toISOString()); // watching began before the lesson
+  const partial = hearsayText(rec).replace(/---[\s\S]*$/, ''); // no footer yet
+  fs.writeFileSync(file, partial);
+  const quiet = new Date(now.getTime() - 20 * 60000); // untouched for 20 minutes (Hearsay writes in bursts)
+  fs.utimesSync(file, quiet, quiet);
+
+  // Hearsay is recording: the unfinished file must wait, however long since it was last written.
+  const logLine = `${pad(rec.getHours())}:${pad(rec.getMinutes())}:${pad(rec.getSeconds())} [INFO] hearsay.app: Starting recording (source=both)\n`;
+  const logFile = path.join(logDir, 'hearsay_2026-01-01.log');
+  fs.writeFileSync(logFile, logLine);
+  assert.equal((await scanFolder({ now })).waiting, 1);
+
+  // Simulate the earlier behaviour: the partial version got imported.
+  fs.writeFileSync(logFile, logLine + `${pad(now.getHours())}:${pad(now.getMinutes())}:00 [INFO] hearsay.app: Stopping recording\n`);
+  const row = getDb().prepare('SELECT * FROM watched_files').get();
+  await (await import('../src/services/automation.js')).importWatchedFile(row.id, { lesson_id: 'L01', actor: 'test' });
+  const first = getDb().prepare('SELECT * FROM watched_files').get();
+  assert.equal(first.status, 'imported');
+
+  // Hearsay finishes the file: the transcript is replaced in the same session and re-analysed.
+  fs.writeFileSync(file, hearsayText(rec, '\n**Local:** last words'));
+  const done = new Date(now.getTime() - 60000);
+  fs.utimesSync(file, done, done);
+  const r = await scanFolder({ now });
+  assert.equal(r.updated, 1);
+  const after = getDb().prepare('SELECT * FROM watched_files').get();
+  assert.notEqual(after.transcript_id, first.transcript_id);
+  assert.equal(after.session_id, first.session_id);
+  assert.equal(after.duration_minutes, 56);
+  const session = (await request(app).get(`/api/sessions/${after.session_id}`)).body;
+  assert.equal(session.transcripts.length, 1, 'the partial transcript was replaced, not duplicated');
+  assert.equal(session.duration_minutes, 56);
+  assert.equal((await scanFolder({ now })).updated, undefined, 'idempotent');
+});
+
+test('Hearsay log that spans several days (Hearsay left running) is dated from the file, so a recording today is seen', () => {
+  const text = [
+    '22:13:51 [INFO] hearsay.app: Starting recording (source=both)',
+    '22:17:48 [INFO] hearsay.app: Stopping recording',
+    '22:17:49 [INFO] hearsay.app: Transcript saved to transcript_1.md',
+    '16:00:31 [INFO] hearsay.app: Starting recording (source=both)',
+    '16:00:37 [INFO] hearsay.audio.recorder: AudioRecorder started (source=both)',
+  ].join('\n');
+  const ev = parseHearsayLog(text, new Date(2026, 10, 26, 16, 5));
+  const starts = ev.filter((e) => e.type === 'start');
+  assert.equal(new Date(starts[1].at).getDate(), 26, 'the latest start is dated today');
+  assert.ok(new Date(starts[0].at) < new Date(starts[1].at), 'the earlier session is dated before it');
+  assert.equal(starts[1].source, 'both');
+});

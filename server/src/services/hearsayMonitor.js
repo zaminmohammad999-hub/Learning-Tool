@@ -11,7 +11,6 @@ export function hearsayLogDir() {
 }
 
 const pad = (n) => String(n).padStart(2, '0');
-const logNameFor = (d) => `hearsay_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.log`;
 const LINE = /^(\d{2}):(\d{2}):(\d{2}) \[(\w+)\] ([\w.]+): (.*)$/;
 const MAX_READ = 2_000_000;
 
@@ -28,13 +27,25 @@ function readTail(file) {
   }
 }
 
-/** Parse lifecycle events from one day's log text. `day` gives the local date the times belong to. */
-export function parseHearsayLog(text, day) {
-  const events = [];
+/**
+ * Parse lifecycle events from a Hearsay log. Log lines carry only a time of day, and Hearsay keeps
+ * writing to the file named after the day it was launched, so one file can span several days.
+ * `lastLineDay` is the local date of the LAST line (the file's modification time); earlier lines are
+ * dated by walking backwards and stepping back a day whenever the clock time goes up.
+ */
+export function parseHearsayLog(text, lastLineDay) {
+  const rows = [];
   for (const raw of text.split(/\r?\n/)) {
     const m = raw.match(LINE);
-    if (!m) continue;
-    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(m[1]), Number(m[2]), Number(m[3])).toISOString();
+    if (m) rows.push(m);
+  }
+  const secs = rows.map((m) => Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+  const offsets = new Array(rows.length).fill(0);
+  for (let i = rows.length - 2; i >= 0; i--) offsets[i] = offsets[i + 1] - (secs[i] > secs[i + 1] ? 1 : 0);
+  const events = [];
+  for (const [i, m] of rows.entries()) {
+    const d = lastLineDay;
+    const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + offsets[i], Number(m[1]), Number(m[2]), Number(m[3])).toISOString();
     const [, , , , , logger, msg] = m;
     if (logger === 'hearsay.app' && /^Starting recording/.test(msg)) {
       const src = msg.match(/source=(\w+)/);
@@ -48,23 +59,31 @@ export function parseHearsayLog(text, day) {
   return events;
 }
 
-/** Current recording state from today's (and, just after midnight, yesterday's) Hearsay log. */
+/** Current recording state from the most recently written Hearsay log files. */
 export function hearsayStatus(now = new Date()) {
   const dir = hearsayLogDir();
   const base = { log_dir_found: false, recording: false, recording_since: null, source: null, last_no_audio: null, last_saved: null, last_event_at: null };
   if (!dir || !fs.existsSync(dir)) return base;
-  const days = [new Date(now.getTime() - 86400000), now];
   let events = [];
-  for (const d of days) {
-    const f = path.join(dir, logNameFor(d));
-    if (fs.existsSync(f)) {
-      try {
-        events = events.concat(parseHearsayLog(readTail(f), d));
-      } catch {
-        /* unreadable log: report as unknown */
-      }
+  let files = [];
+  try {
+    files = fs
+      .readdirSync(dir)
+      .filter((n) => /^hearsay_.*\.log$/i.test(n))
+      .map((n) => ({ f: path.join(dir, n), mtime: fs.statSync(path.join(dir, n)).mtime }))
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(0, 2);
+  } catch {
+    /* unreadable folder: report as unknown */
+  }
+  for (const { f, mtime } of files) {
+    try {
+      events = events.concat(parseHearsayLog(readTail(f), mtime));
+    } catch {
+      /* unreadable log: report as unknown */
     }
   }
+  events.sort((a, b) => a.at.localeCompare(b.at));
   const out = { ...base, log_dir_found: true };
   let lastStart = null;
   for (const e of events) {

@@ -19,7 +19,7 @@ You need **Node.js 22.13 or newer** (24 or 26 recommended) and Git.
 node -v                       # must be v22.13+ (node:sqlite)
 cd "$HOME\OneDrive\Desktop\Learning-Tool"
 npm run setup                 # installs root, server and client dependencies
-Copy-Item .env.example .env   # optional: only needed for AI or custom ports
+Copy-Item server\.env.example server\.env   # optional: only needed for AI, calendar or custom ports
 npm run validate:curriculum   # checks 6/24/96/12/24, 2 lessons/week, 60 min, no bad ids
 ```
 
@@ -47,7 +47,7 @@ The database is seeded automatically on start. You can also run `npm run seed`. 
 
 ## 3. Optional: enable Claude
 
-1. Get an API key from https://console.anthropic.com/ and put it in `.env`:
+1. Get an API key from https://console.anthropic.com/ and put it in `server/.env`:
    ```
    ANTHROPIC_API_KEY=sk-ant-...
    ```
@@ -56,7 +56,7 @@ The database is seeded automatically on start. You can also run `npm run seed`. 
 
 **Defaults:** model `claude-opus-5-5`, effort `medium`. Both can be changed in Settings.
 
-**Key handling:** the key is only read on the server. It is never sent to the browser, logged or stored in the database, and `.env` is git-ignored.
+**Key handling:** the key is only read on the server. It is never sent to the browser, logged or stored in the database, and `server/.env` is git-ignored.
 
 **Cost awareness:** about 4 characters ≈ 1 token. A 60-minute transcript of roughly 50,000 characters is about 15–20k input tokens per analysis, typically well under US$0.20 on Opus 5.5 ($4 per million input tokens, $20 per million output). The app shows an estimate before every Claude analysis. Chat questions send only the retrieved excerpts.
 
@@ -84,7 +84,7 @@ Once this is set up, the app does the following around each lesson:
 1. **Calendar:**
    - Open Google Calendar → ⚙ Settings → your calendar → **Integrate calendar**.
    - Copy the **Secret address in iCal format**.
-   - In `.env`, set `CALENDAR_ICS_URL=<that address>`, then restart the app.
+   - In `server/.env`, set `CALENDAR_ICS_URL=<that address>`, then restart the app.
    - Treat the address like a password. It stays on the server and is never shown, logged or exported.
 2. **Lesson events:**
    - Make sure your lesson events have a recognisable word in the title. The default keyword is **Vibe Coding**, and you can change it in Settings → Automation. Only events whose title contains the keyword are read.
@@ -180,7 +180,7 @@ You can also copy the database while the app is stopped:
 Copy-Item data\db\learning.sqlite "data\backups\learning-$(Get-Date -Format yyyyMMdd).sqlite"
 ```
 
-Note: the project lives in a OneDrive folder. Avoid OneDrive syncing the live database while the app is running. To move it outside OneDrive, set `DB_PATH` in `.env`, for example `DB_PATH=C:\VibeData\learning.sqlite`.
+Note: the project lives in a OneDrive folder. Avoid OneDrive syncing the live database while the app is running. To move it outside OneDrive, set `DB_PATH` in `server/.env`, for example `DB_PATH=C:\VibeData\learning.sqlite`.
 
 **Privacy controls** (in Settings):
 

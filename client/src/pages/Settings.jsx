@@ -24,7 +24,7 @@ function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
 
         <strong>1. Calendar</strong>
         <p className="faint" style={{ fontSize: '0.82rem', margin: 0 }}>
-          In Google Calendar → Settings → your calendar → <em>Integrate calendar</em>, copy the <em>Secret address in iCal format</em> and add <code>CALENDAR_ICS_URL=…</code> to <code>.env</code>, then restart. The address is a password: it stays on the server and is never shown, logged or exported.
+          In Google Calendar → Settings → your calendar → <em>Integrate calendar</em>, copy the <em>Secret address in iCal format</em> and add <code>CALENDAR_ICS_URL=…</code> to <code>server/.env</code>, then restart. The address is a password: it stays on the server and is never shown, logged or exported.
         </p>
         <div className="row" style={{ fontSize: '0.88rem' }}>
           {st?.calendar.configured ? <Badge status="pass">connected</Badge> : <Badge status="fail">not connected</Badge>}
@@ -151,7 +151,7 @@ export default function Settings() {
             </p>
             {!ai.key_configured && (
               <div className="notice" style={{ fontSize: '0.88rem' }}>
-                To enable Claude: copy <code>.env.example</code> to <code>.env</code> in the project root, set <code>ANTHROPIC_API_KEY=…</code>, restart <code>npm run dev</code>, then enable AI here. Without a key, transcript paste, rule-based matching, manual mapping, assessments and briefings all still work.
+                To enable Claude: copy <code>server/.env.example</code> to <code>server/.env</code>, set <code>ANTHROPIC_API_KEY=…</code>, restart <code>npm run dev</code>, then enable AI here. Without a key, transcript paste, rule-based matching, manual mapping, assessments and briefings all still work.
               </div>
             )}
             <label className="row"><input type="checkbox" checked={s.ai_enabled === 'true'} onChange={(e) => setS({ ...s, ai_enabled: e.target.checked ? 'true' : 'false' })} /> Enable Claude for transcript analysis and Q&A</label>

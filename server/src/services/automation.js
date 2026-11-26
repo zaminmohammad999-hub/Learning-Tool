@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getDb, getMode, nowIso } from '../db/connection.js';
 import { HttpError, audit, getSetting, notFound } from './common.js';
-import { ALLOWED_EXTENSIONS, addTranscript, checksumOf, createSession, getTranscript, hearsayFinalised, transcriptMeta, validateTranscriptText } from './transcripts.js';
+import { ALLOWED_EXTENSIONS, addTranscript, checksumOf, createSession, deleteTranscript, getTranscript, hearsayFinalised, transcriptMeta, updateSession, validateTranscriptText } from './transcripts.js';
 import { runAnalysis, analysisCostEstimate } from './analysis.js';
 import { aiStatus } from './aiClient.js';
 import { translateTranscript, translationEstimate } from './translation.js';
@@ -22,7 +22,9 @@ import { config } from '../config.js';
 
 const db = () => getDb();
 const SETTLE_MS = 15_000; // file must be unchanged this long before reading
-const UNFINALISED_GRACE_MS = 10 * 60_000; // a Hearsay file without its footer is still being written
+const UNFINALISED_GRACE_MS = 90 * 60_000; // an unfinished Hearsay file untouched this long is imported as it is
+// Hearsay warns after ~2 minutes of silence, which happens in normal conversation; only a long gap is worth an alert.
+const NO_AUDIO_ALERT_SECONDS = 300;
 const FINAL = new Set(['imported', 'ignored', 'duplicate']);
 
 const setting = (k, d) => getSetting(k, d);
@@ -88,7 +90,12 @@ export async function scanFolder({ now = new Date() } = {}) {
       result.seen++;
       const mtime = st.mtime.toISOString();
       const row = db().prepare('SELECT * FROM watched_files WHERE path = ?').get(p);
-      if (row && FINAL.has(row.status)) continue; // handled (a later edit to an imported file is not re-imported)
+      if (row && row.status === 'imported' && (row.mtime !== mtime || row.size !== st.size)) {
+        // The file changed after import, e.g. Hearsay finished writing it. Swap in the full version if safe.
+        if (now.getTime() - st.mtime.getTime() >= SETTLE_MS && (await refreshImportedFile(row, st, now))) result.updated = (result.updated || 0) + 1;
+        continue;
+      }
+      if (row && FINAL.has(row.status)) continue; // handled
       if (row && row.status === 'needs_review' && row.mtime === mtime && row.size === st.size) continue; // waiting for you
       if (st.size > config.maxTranscriptBytes) {
         upsertFile(p, { size: st.size, mtime, status: 'error', reason: 'File is larger than the transcript size limit.' });
@@ -113,7 +120,7 @@ export async function scanFolder({ now = new Date() } = {}) {
         continue;
       }
       const meta = transcriptMeta(text, name);
-      if (meta.hearsay && !hearsayFinalised(text) && now.getTime() - st.mtime.getTime() < UNFINALISED_GRACE_MS) {
+      if (stillBeingWritten(meta, text, st, now)) {
         upsertFile(p, { size: st.size, mtime, status: 'waiting', reason: 'Hearsay is still recording or saving this transcript.', recorded_at: meta.recorded_at });
         result.waiting++;
         continue;
@@ -143,6 +150,71 @@ export async function scanFolder({ now = new Date() } = {}) {
   } finally {
     scanning = false;
   }
+}
+
+/**
+ * Hearsay writes the transcript in bursts during the recording and adds its footer only when you press Stop.
+ * An unfinished file is never imported while Hearsay is recording; only if it has sat untouched for a long
+ * time (Hearsay crashed or was closed) is it imported as it is.
+ */
+function stillBeingWritten(meta, text, st, now) {
+  if (!meta.hearsay || hearsayFinalised(text)) return false;
+  if (hearsayStatus(now).recording) return true;
+  return now.getTime() - st.mtime.getTime() < UNFINALISED_GRACE_MS;
+}
+
+/**
+ * An already-imported file has changed. If it is now the finished version and nothing has been approved from
+ * the earlier import yet, replace that transcript in the same session and re-run the pipeline. If matches were
+ * already approved, nothing is replaced automatically (your decisions are kept) and the file is flagged.
+ * Returns true when the transcript was replaced.
+ */
+async function refreshImportedFile(row, st, now) {
+  const mtime = st.mtime.toISOString();
+  let text;
+  try {
+    text = fs.readFileSync(row.path, 'utf8');
+  } catch {
+    return false;
+  }
+  const meta = transcriptMeta(text, row.filename);
+  if (stillBeingWritten(meta, text, st, now)) return false; // check again on the next scan
+  const markSeen = (reason) =>
+    db().prepare('UPDATE watched_files SET mtime = ?, size = ?, reason = ?, updated_at = ? WHERE id = ?').run(mtime, st.size, reason, nowIso(), row.id);
+  const old = row.transcript_id ? db().prepare('SELECT id, checksum FROM transcripts WHERE id = ?').get(row.transcript_id) : null;
+  if (!old || !row.session_id) return markSeen('The file changed after import, but its transcript or session was deleted.'), false;
+  try {
+    validateTranscriptText(text);
+  } catch {
+    return markSeen(row.reason), false;
+  }
+  if (old.checksum === checksumOf(text)) return markSeen(row.reason), false;
+  const approved = db().prepare('SELECT COUNT(*) n FROM exercise_evidence WHERE transcript_id = ?').get(old.id).n;
+  if (approved) {
+    markSeen('Hearsay added more to this file after you had approved matches, so it was not replaced. Import the full version by hand if needed.');
+    return false;
+  }
+  deleteTranscript(old.id, 'automation');
+  const t = addTranscript({ session_id: row.session_id, text, filename: row.filename, recorded_at: meta.recorded_at }, 'automation');
+  if (meta.duration_minutes) updateSession(row.session_id, { duration_minutes: meta.duration_minutes }, 'automation');
+  db().prepare('UPDATE watched_files SET transcript_id = ?, mtime = ?, size = ?, duration_minutes = ?, reason = ?, updated_at = ? WHERE id = ?').run(
+    t.id,
+    mtime,
+    st.size,
+    meta.duration_minutes,
+    'Updated with the finished recording.',
+    nowIso(),
+    row.id
+  );
+  audit('watched_file', row.id, 'replaced_with_final', { transcript_id: old.id }, { transcript_id: t.id }, 'automation');
+  const steps = await runPipeline(t.id, 'automation');
+  db().prepare('UPDATE watched_files SET pipeline_json = ? WHERE id = ?').run(JSON.stringify(steps), row.id);
+  const pending = db().prepare("SELECT COUNT(*) n FROM evidence_matches WHERE transcript_id = ? AND review_status = 'pending'").get(t.id).n;
+  notify(
+    `${row.lesson_id ? `Lesson ${Number(row.lesson_id.slice(1))}` : 'Lesson'} transcript complete`,
+    `${who().learner ? `${who().learner}, ` : ''}the full recording is in. ${pending} proposed match(es) are ready to review in Learning Studio.`
+  );
+  return true;
 }
 
 /** Import one watched file as a session + transcript, then run the pipeline. Used by the scanner and the inbox. */
@@ -284,9 +356,9 @@ export function recordingAlert(now = new Date()) {
     return { key: `pre:${occ.id}`, level: 'info', title: `${label} starts at ${at}`, body: `${hi}open Hearsay and press Record (audio source: microphone + system audio).` };
   if (t >= start + 2 * 60000 && t < end && !recordingThis)
     return { key: `late:${occ.id}`, level: 'warn', title: `${label} started at ${at}. Hearsay is not recording`, body: `${hi}start recording in Hearsay now so this lesson can be analysed.` };
-  if (t >= start && t < end && recordingThis && hs.last_no_audio && new Date(hs.last_no_audio.at).getTime() >= start)
+  if (t >= start && t < end && recordingThis && hs.last_no_audio && hs.last_no_audio.seconds >= NO_AUDIO_ALERT_SECONDS && new Date(hs.last_no_audio.at).getTime() >= start)
     return {
-      key: `noaudio:${occ.id}:${hs.last_no_audio.at}`,
+      key: `noaudio:${occ.id}`, // once per lesson: pauses in conversation are normal
       level: 'warn',
       title: 'Hearsay is capturing no audio',
       body: `No sound for ${Math.round(hs.last_no_audio.seconds / 60)} min${hs.last_no_audio.source ? ` from the ${hs.last_no_audio.source}` : ''}. Check the audio source in Hearsay settings.`,

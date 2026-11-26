@@ -8,8 +8,9 @@ export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const CURRICULUM_PATH = path.join(DATA_DIR, 'vibe_coding_curriculum.json');
 export const CLIENT_DIST = path.join(ROOT_DIR, 'client', 'dist');
 
-// Load the root .env (never committed). Values already in the environment win.
-dotenv.config({ path: path.join(ROOT_DIR, '.env'), quiet: true });
+// Secrets live in server/.env (never committed): only the back end uses them. A .env in the project root
+// is still read as a fallback. Values already in the environment win over both.
+dotenv.config({ path: [path.join(ROOT_DIR, 'server', '.env'), path.join(ROOT_DIR, '.env')], quiet: true });
 
 function resolveFromRoot(p, fallback) {
   if (!p) return fallback;

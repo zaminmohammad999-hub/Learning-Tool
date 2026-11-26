@@ -27,7 +27,7 @@ export function aiStatus() {
   const keyPresent = config.anthropicKeyPresent || Boolean(testOverride);
   const model = getSetting('ai_model') || config.defaultModel;
   let reason = null;
-  if (!keyPresent) reason = 'ANTHROPIC_API_KEY is not set in the server environment (.env). Core tracking works without it.';
+  if (!keyPresent) reason = 'ANTHROPIC_API_KEY is not set in the server environment (server/.env). Core tracking works without it.';
   else if (!enabled) reason = 'AI is disabled in Settings. Enable it to use Claude analysis and answers.';
   return {
     available: enabled && keyPresent,
