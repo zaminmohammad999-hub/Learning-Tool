@@ -50,6 +50,49 @@ function TranslationBar({ t, ai, onDone }) {
   );
 }
 
+/** Automatic fill-in status for one transcript: what was applied (with Undo), or apply it now. */
+function AutoApplyBar({ t, onDone }) {
+  const { data: rec, reload } = useApi(`/transcripts/${t.id}/auto-applied`);
+  const act = useAction();
+  const hasClaude = t.analyses.some((a) => a.method === 'claude' && a.status === 'completed');
+  if (!hasClaude) return null;
+  const done = async (p) => {
+    await p;
+    reload();
+    onDone?.();
+  };
+  const applied = rec && !rec.undone_at;
+  const s = rec?.summary;
+  return (
+    <div className="notice" style={{ margin: '8px 0', fontSize: '0.88rem' }}>
+      <div className="row between">
+        <span>
+          {applied ? (
+            <>
+              <Badge tone="info">auto</Badge> Filled in from this transcript: {s.approved.length} exercise update(s)
+              {s.lessons_held.length ? `, ${s.lessons_held.join(', ')} marked Held` : ''}
+              {s.feedback_id ? ', feedback and homework added' : ''}
+              {s.left_for_review.length ? `. ${s.left_for_review.length} finding(s) Claude was unsure about wait for you below.` : '.'}
+            </>
+          ) : (
+            <>The dashboard has not been filled in from this transcript's Claude analysis{rec?.undone_at ? ' (the automatic updates were undone)' : ''}.</>
+          )}
+        </span>
+        {applied ? (
+          <button className="btn small" disabled={act.busy} onClick={() => window.confirm('Undo the automatic updates from this transcript? The findings go back for your review.') && act.run(() => done(api.post(`/transcripts/${t.id}/auto-apply/undo`)))}>
+            Undo
+          </button>
+        ) : (
+          <button className="btn small primary" disabled={act.busy} onClick={() => act.run(() => done(api.post(`/transcripts/${t.id}/auto-apply`)))}>
+            Fill in the dashboard
+          </button>
+        )}
+      </div>
+      <ErrorBox error={act.error} />
+    </div>
+  );
+}
+
 function TranscriptPanel({ transcriptId, onChanged }) {
   const { health } = useAppContext();
   const { data: t, error, loading, reload } = useApi(`/transcripts/${transcriptId}`);
@@ -86,6 +129,7 @@ function TranscriptPanel({ transcriptId, onChanged }) {
       <p className="faint" style={{ fontSize: '0.85rem' }}>
         {t.segment_count} lines · {t.char_count.toLocaleString()} characters · format {t.format} · imported {t.created_at.slice(0, 10)} · original preserved (checksum <code>{t.checksum.slice(0, 12)}…</code>)
       </p>
+      <AutoApplyBar t={t} onDone={async () => { await reload(); onChanged?.(); }} />
       <TranslationBar t={t} ai={health?.ai} onDone={async (r) => { await reload(); if (r?.analysis_id) setAnalysisId(r.analysis_id); onChanged?.(); }} />
       <details>
         <summary>Full stored transcript</summary>

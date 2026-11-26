@@ -23,6 +23,8 @@ const USER_TABLES = [
   ['transcript_segments', null],
   ['calendar_events', null],
   ['watched_files', null],
+  ['auto_applied', null],
+  ['lesson_reviews', null],
   ['transcript_analyses', null],
   ['evidence_matches', null],
   ['approval_decisions', null],
@@ -56,6 +58,7 @@ const SETTING_RULES = {
   auto_claude_analysis: (v) => v === 'true' || v === 'false',
   auto_max_usd: (v) => /^\d+(\.\d{1,2})?$/.test(v) && Number(v) <= 20,
   reminders_enabled: (v) => v === 'true' || v === 'false',
+  auto_apply: (v) => v === 'true' || v === 'false',
   translation_model: (v) => v === '' || /^claude-[a-z0-9-]{2,60}$/.test(v),
 };
 

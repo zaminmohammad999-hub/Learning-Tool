@@ -414,3 +414,123 @@ test('Hearsay log that spans several days (Hearsay left running) is dated from t
   assert.ok(new Date(starts[0].at) < new Date(starts[1].at), 'the earlier session is dated before it');
   assert.equal(starts[1].source, 'both');
 });
+
+test('"What did we cover?" is answered as a summary of approved evidence, not a topic lookup', async () => {
+  const { app } = await makeApp();
+  await request(app).post('/api/exercises/D1-C1-E2/evidence').send({ category: 'discussed', note: 'Explorer and terminal shown in lesson 1' }).expect(201);
+  for (const q of ['What did we cover?', 'what have we covered so far', 'What did we cover in the last lesson?']) {
+    const r = (await request(app).post('/api/assistant/chat').send({ question: q })).body;
+    assert.equal(r.intent, 'covered', q);
+    assert.match(r.content, /D1-C1-E2/, q);
+  }
+  const topic = (await request(app).post('/api/assistant/chat').send({ question: 'Have we covered git fetch?' })).body;
+  assert.equal(topic.intent, 'have_we');
+});
+
+test('auto-apply: Claude findings fill the dashboard (status, coverage, Held, feedback, homework) and Undo restores it', async () => {
+  const { app } = await makeApp();
+  const { runPipeline } = await import('../src/services/automation.js');
+  await request(app).patch('/api/settings').send({ ai_enabled: 'true', auto_claude_analysis: 'true', auto_apply: 'true', tutor_name: 'Fariha', learner_name: 'Mohammad' }).expect(200);
+  setNotifierForTests(() => {});
+  setAiClientForTests({
+    beta: {
+      messages: {
+        parse: async (params) => {
+          const n = (q) => {
+            const line = params.messages[0].content.split('\n').find((l) => l.includes(q)) || '';
+            return Number((line.match(/^\[#(\d+)\]/) || [0, 1])[1]);
+          };
+          return {
+            stop_reason: 'end_turn', model: params.model, usage: { input_tokens: 10, output_tokens: 10 },
+            parsed_output: {
+              findings: [
+                { exercise_id: 'D2-C2-E2', category: 'demonstrated', confidence: 0.8, evidence_quote: 'git clone', segment_number: n('git clone'), guided_or_independent: 'guided', rationale: 'Fariha demonstrated git clone.' },
+                { exercise_id: 'D2-C2-E3', category: 'uncertain', confidence: 0.3, evidence_quote: 'fetch', segment_number: n('fetch'), guided_or_independent: 'unclear', rationale: 'fetch only mentioned' },
+              ],
+              commands_executed: [], commands_mentioned_only: [],
+              difficulties: [{ text: 'Mohammad was unsure what fetch does.', segment_number: 1 }],
+              decisions: [], tutor_feedback: [{ text: 'Fariha said the clone went well.', segment_number: 1 }],
+              homework: [{ text: 'Practise git fetch before next lesson.', segment_number: 1 }],
+              unresolved_questions: [{ text: 'Difference between fetch and pull.', segment_number: 1 }],
+              topics: ['git clone'],
+            },
+          };
+        },
+      },
+    },
+  });
+  const { FIXTURE } = await import('./helpers.js');
+  const t = (await request(app).post('/api/transcripts').send({ text: FIXTURE, filename: 'l6.txt', session: { session_date: '2026-11-26', lesson_ids: ['L06'] } }).expect(201)).body;
+  const steps = await runPipeline(t.id, 'automation');
+  const auto = steps.find((s) => s.step === 'auto_apply');
+  assert.ok(auto, JSON.stringify(steps));
+  assert.equal(auto.status, 'done');
+  assert.equal(auto.approved, 1);
+  assert.equal(auto.left_for_review, 1);
+
+  assert.equal((await request(app).get('/api/exercises/D2-C2-E2')).body.status, 'demonstrated');
+  assert.equal((await request(app).get('/api/exercises/D2-C2-E3')).body.status, 'not_started', 'uncertain stays for review');
+  const lesson = (await request(app).get('/api/lessons/L06')).body;
+  assert.equal(lesson.status, 'held');
+  assert.equal(lesson.held_date, '2026-11-26');
+  const fb = (await request(app).get('/api/feedback')).body;
+  assert.equal(fb.length, 1);
+  assert.match(fb[0].author, /Fariha \(automatic/);
+  assert.match(fb[0].weaknesses, /unsure what fetch/);
+  assert.match(fb[0].corrections, /clone went well/);
+  assert.equal((await request(app).get('/api/homework')).body.length, 1);
+  const pending = getDb().prepare("SELECT COUNT(*) n FROM evidence_matches m JOIN transcript_analyses a ON a.id = m.analysis_id WHERE m.transcript_id = ? AND m.review_status = 'pending'").get(t.id).n;
+  assert.equal(pending, 1, 'only the uncertain Claude finding is left; free-matcher proposals were superseded');
+  const stats = (await request(app).get('/api/dashboard/stats')).body;
+  assert.equal(stats.mastery.verified_passed, 0, 'mastery is never set automatically');
+  assert.ok(stats.coverage.covered >= 1);
+
+  await request(app).post(`/api/transcripts/${t.id}/auto-apply/undo`).send({}).expect(200);
+  assert.equal((await request(app).get('/api/exercises/D2-C2-E2')).body.status, 'not_started');
+  assert.equal((await request(app).get('/api/lessons/L06')).body.status, 'planned');
+  assert.equal((await request(app).get('/api/feedback')).body.length, 0);
+  assert.equal((await request(app).get('/api/homework')).body.length, 0);
+  // It can be applied again by hand.
+  const again = (await request(app).post(`/api/transcripts/${t.id}/auto-apply`).send({}).expect(200)).body;
+  assert.equal(again.approved.length, 1);
+});
+
+test('lesson review: per-objective coverage with generous scores, stored and shown per lesson', async () => {
+  const { app } = await makeApp();
+  await request(app).patch('/api/settings').send({ ai_enabled: 'true' }).expect(200);
+  let system = '';
+  setAiClientForTests({
+    beta: {
+      messages: {
+        parse: async (params) => {
+          system = params.system;
+          return {
+            stop_reason: 'end_turn', model: params.model, usage: { input_tokens: 5, output_tokens: 5 },
+            parsed_output: {
+              objectives: [
+                { exercise_id: 'D2-C2-E1', coverage: 'discussed', score: 55, summary: 'Talked through.', evidence_segment: 2 },
+                { exercise_id: 'D2-C2-E2', coverage: 'demonstrated', score: 140, summary: 'Fariha showed git clone.', evidence_segment: 5 },
+                { exercise_id: 'D9-C9-E9', coverage: 'demonstrated', score: 90, summary: 'not a lesson objective', evidence_segment: null },
+              ],
+              overall_score: 62, overall_summary: 'Good start.', went_well: ['clone'], to_practise: ['fetch'],
+            },
+          };
+        },
+      },
+    },
+  });
+  const { FIXTURE } = await import('./helpers.js');
+  await request(app).post('/api/transcripts').send({ text: FIXTURE, filename: 'l6.txt', session: { session_date: '2026-11-26', lesson_ids: ['L06'] } }).expect(201);
+  assert.equal((await request(app).get('/api/lessons/L06/review')).body, null);
+  const r = (await request(app).post('/api/lessons/L06/review').send({}).expect(201)).body;
+  assert.match(system, /generous/i);
+  assert.equal(r.overall_score, 62);
+  assert.equal(r.objectives.length, 4, 'one row per lesson objective');
+  const e2 = r.objectives.find((o) => o.exercise_id === 'D2-C2-E2');
+  assert.equal(e2.score, 100, 'scores are clamped to 0–100');
+  assert.ok(e2.description);
+  assert.ok(!r.objectives.some((o) => o.exercise_id === 'D9-C9-E9'), 'unknown ids dropped');
+  assert.equal(r.objectives.find((o) => o.exercise_id === 'D2-C2-E4').coverage, 'not_covered');
+  assert.equal((await request(app).get('/api/lessons/L06/review')).body.overall_score, 62);
+  await request(app).post('/api/lessons/L01/review').send({}).expect(400);
+});

@@ -10,7 +10,7 @@ function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
   const { data: st, reload } = useApi('/automation/status');
   const bool = (k, d = 'false') => (s[k] ?? d) === 'true';
   const toggle = (k) => (e) => setS({ ...s, [k]: e.target.checked ? 'true' : 'false' });
-  const keys = ['watch_enabled', 'watch_folder', 'calendar_keyword', 'auto_translate', 'auto_claude_analysis', 'auto_max_usd', 'reminders_enabled', 'translation_model'];
+  const keys = ['watch_enabled', 'watch_folder', 'calendar_keyword', 'auto_translate', 'auto_claude_analysis', 'auto_apply', 'auto_max_usd', 'reminders_enabled', 'translation_model'];
   const after = (m) => {
     done(m);
     reload();
@@ -67,6 +67,7 @@ function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
         <strong>3. Translation & analysis</strong>
         <label className="row"><input type="checkbox" checked={bool('auto_translate')} onChange={toggle('auto_translate')} /> Translate Urdu transcripts to English automatically (Claude)</label>
         <label className="row"><input type="checkbox" checked={bool('auto_claude_analysis')} onChange={toggle('auto_claude_analysis')} /> Also run Claude analysis automatically (the free rule-based matcher always runs)</label>
+        <label className="row"><input type="checkbox" checked={bool('auto_apply')} onChange={toggle('auto_apply')} /> Fill in the dashboard automatically from Claude's analysis: exercise status (discussed / demonstrated / done independently), lesson Held, Fariha's feedback and homework. Anything Claude is unsure about waits for you; verified mastery always stays a live test. Every lesson can be undone in one click.</label>
         <div className="grid cols-2">
           <Field label="Automatic spend limit per step (US$)">
             <input type="number" min={0} max={20} step={0.1} value={s.auto_max_usd ?? '1'} onChange={(e) => setS({ ...s, auto_max_usd: e.target.value })} />

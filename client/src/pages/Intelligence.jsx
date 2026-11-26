@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { useApi, useAction } from '../hooks.js';
 import { useAppContext, AiIndicator } from '../App.jsx';
 import AnalysisReview from '../components/AnalysisReview.jsx';
-import { Card, CitationList, Empty, ErrorBox, Field, Loading, RichText, today } from '../components/ui.jsx';
+import { Badge, Card, CitationList, Empty, ErrorBox, Field, Loading, RichText, today } from '../components/ui.jsx';
 
 const QUICK = ['What did we cover?', 'What did we miss?', 'What should my tutor cover next?', 'Have we demonstrated git fetch?', 'What mistakes keep recurring?'];
 const MAX_BYTES = 2_000_000;
@@ -162,7 +162,10 @@ export function TranscriptImport({ onSaved, presetLesson }) {
   }
 
   return (
-    <Card title="Add a transcript">
+    <Card title="Add a transcript by hand">
+      <div className="notice" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+        You do not need this for lessons recorded with Hearsay: they are imported, translated and analysed automatically and appear under <strong>Review lessons</strong>. Use this only for a transcript from somewhere else.
+      </div>
       <p className="muted" style={{ fontSize: '0.88rem' }}>
         Paste a transcript or upload .txt / .md / .vtt / .srt (max 2 MB). It is treated as untrusted text: nothing inside it is executed, and nothing changes your progress until you approve proposed matches.
       </p>
@@ -220,44 +223,114 @@ export function TranscriptImport({ onSaved, presetLesson }) {
   );
 }
 
-function ReviewQueue() {
+/** The lesson's transcript, loaded only when opened. */
+function TranscriptPeek({ transcriptId }) {
+  const [open, setOpen] = useState(false);
+  const { data: t } = useApi(open ? `/transcripts/${transcriptId}` : null);
+  return (
+    <details onToggle={(e) => setOpen(e.currentTarget.open)} style={{ margin: '6px 0 10px' }}>
+      <summary>Read the transcript</summary>
+      {!t ? (
+        <Loading what="Loading transcript" />
+      ) : (
+        <div className="transcript-view" style={{ maxHeight: 360, overflowY: 'auto', marginTop: 6 }}>
+          {t.segments.map((s) => (
+            <div key={s.seq} className="line">
+              <span className="faint mono">{s.timecode || `#${s.seq}`}</span>
+              <strong style={{ fontSize: '0.82rem' }}>{s.speaker || ''}</strong>
+              <span>{s.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
+
+function ReviewQueue({ onChanged }) {
   const { data, error, loading, reload } = useApi('/review/pending');
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} retry={reload} />;
-  if (!data.length) return <Empty>No proposed matches are waiting for review.</Empty>;
-  return data.map((a) => (
-    <Card key={a.id}>
-      <AnalysisReview analysis={a} onDecided={reload} />
-    </Card>
-  ));
+  if (!data.length) return <Empty>No lessons are waiting for review. New Hearsay recordings appear here automatically after each lesson.</Empty>;
+  const refresh = () => {
+    reload();
+    onChanged?.();
+  };
+  // One card per lesson transcript: Claude's proposals first, the free matcher's folded underneath.
+  const groups = [];
+  data.forEach((a) => {
+    let g = groups.find((x) => x.transcript_id === a.transcript_id);
+    if (!g) groups.push((g = { transcript_id: a.transcript_id, source: a.source, analyses: [] }));
+    g.analyses.push(a);
+  });
+  return groups.map((g) => {
+    const s = g.source;
+    const main = g.analyses.find((a) => a.method === 'claude') || g.analyses[0];
+    const others = g.analyses.filter((a) => a !== main);
+    const pending = (a) => a.matches.filter((m) => m.review_status === 'pending').length;
+    return (
+      <Card
+        key={g.transcript_id}
+        title={s ? s.session_title || `Session ${s.session_date}` : `Transcript #${g.transcript_id}`}
+        actions={s && <Link className="btn small" to={`/sessions/${s.session_id}`}>Open in Session History</Link>}
+      >
+        {s && (
+          <p className="faint" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+            {s.session_date}
+            {s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}
+            {s.tutor ? ` · with ${s.tutor}` : ''}
+            {s.lesson_ids ? ` · ${s.lesson_ids}` : ''} · {s.segment_count} lines
+            {s.translation_status === 'done' ? ' · translated from Urdu' : ''} ·{' '}
+            {s.auto_imported ? <Badge tone="info">imported automatically from Hearsay</Badge> : <Badge>added by hand</Badge>}
+          </p>
+        )}
+        <TranscriptPeek transcriptId={g.transcript_id} />
+        <AnalysisReview analysis={main} onDecided={refresh} />
+        {others.map((a) => (
+          <details key={a.id} style={{ marginTop: 12 }}>
+            <summary>
+              Also proposed by the {a.method === 'claude' ? 'Claude analysis' : 'free keyword matcher'} ({pending(a)} waiting)
+              {main.method === 'claude' && a.method !== 'claude' && <span className="faint">: less accurate; reject anything Claude already covers</span>}
+            </summary>
+            <AnalysisReview analysis={a} onDecided={refresh} />
+          </details>
+        ))}
+      </Card>
+    );
+  });
 }
 
 export default function Intelligence() {
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(params.get('lesson') ? 'import' : 'chat');
+  const { data: pendingList, reload: reloadPending } = useApi('/review/pending');
+  const waiting = pendingList ? new Set(pendingList.map((a) => a.transcript_id)).size : 0;
+  const [tab, setTab] = useState(params.get('lesson') ? 'import' : params.get('tab') || null);
   const [n, setN] = useState(0);
+  // Open on the review tab when a lesson is waiting; otherwise on Ask.
+  const active = tab || (pendingList ? (waiting ? 'review' : 'chat') : null);
+  if (!active) return <Loading />;
   return (
     <div>
       <div className="page-head">
         <div>
           <h1>Tutor Intelligence</h1>
-          <p className="muted">Paste transcripts, review proposed curriculum matches, and ask questions across all saved sessions.</p>
+          <p className="muted">Lessons recorded with Hearsay arrive here automatically. Review what each lesson covered, and ask questions across all your lessons.</p>
         </div>
       </div>
       <div className="tabs" role="tablist">
         {[
+          ['review', `Review lessons${waiting ? ` (${waiting})` : ''}`],
           ['chat', 'Ask'],
-          ['import', 'Add transcript'],
-          ['review', 'Review queue'],
+          ['import', 'Add a transcript by hand'],
         ].map(([k, t]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+          <button key={k} role="tab" aria-selected={active === k} className={active === k ? 'active' : ''} onClick={() => setTab(k)}>
             {t}
           </button>
         ))}
       </div>
-      {tab === 'chat' && <Chat />}
-      {tab === 'import' && <TranscriptImport key={n} presetLesson={params.get('lesson')} onSaved={() => setN((x) => x)} />}
-      {tab === 'review' && <ReviewQueue />}
+      {active === 'chat' && <Chat />}
+      {active === 'import' && <TranscriptImport key={n} presetLesson={params.get('lesson')} onSaved={() => setN((x) => x)} />}
+      {active === 'review' && <ReviewQueue onChanged={reloadPending} />}
     </div>
   );
 }

@@ -24,12 +24,15 @@ const STATUS_TONE = {
 };
 const STATUS_ICON = { held: '✓', missed: '✕', pass: '✓', fail: '✕', approved: '✓', rejected: '✕', needs_practice: '!', pending: '…' };
 
+// Lesson (meeting) statuses are shown capitalised: Planned / Held / Missed.
+const LESSON_STATUS_TEXT = { planned: 'Planned', held: 'Held', missed: 'Missed' };
+
 export function Badge({ status, children, tone }) {
   const t = tone ?? STATUS_TONE[status] ?? '';
   return (
     <span className={`badge ${t}`}>
       {STATUS_ICON[status] && <span aria-hidden="true">{STATUS_ICON[status]}</span>}
-      {children ?? label(status)}
+      {children ?? LESSON_STATUS_TEXT[status] ?? label(status)}
     </span>
   );
 }

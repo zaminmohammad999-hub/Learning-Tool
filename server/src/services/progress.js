@@ -190,7 +190,7 @@ export function addManualEvidence(id, { category, note, session_id }, actor) {
 export function getLesson(id) {
   const l = db()
     .prepare(
-      `SELECT l.*, lp.status, lp.scheduled_date, lp.held_date, lp.tutor, lp.objectives, lp.homework_text, lp.notes, lp.updated_at,
+      `SELECT l.*, lp.status, lp.scheduled_date, lp.scheduled_time, lp.schedule_source, lp.held_date, lp.tutor, lp.objectives, lp.homework_text, lp.notes, lp.updated_at,
               cc.title AS competency_title, d.name AS domain_name
        FROM lessons l JOIN lesson_progress lp ON lp.lesson_id = l.id
        JOIN core_competencies cc ON cc.id = l.competency_id JOIN learning_domains d ON d.id = l.domain_id WHERE l.id = ?`

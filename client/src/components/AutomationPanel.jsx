@@ -37,6 +37,38 @@ function InboxRow({ f, onDone }) {
   );
 }
 
+/** What was filled in automatically from one lesson's transcript, with a one-click Undo. */
+export function AutoApplied({ f, onDone }) {
+  const act = useAction();
+  const s = f.auto_summary;
+  if (!s || !f.transcript_id) return null;
+  if (f.auto_undone_at)
+    return <div className="faint" style={{ fontSize: '0.78rem' }}>Automatic updates were undone; the findings are waiting in Review lessons.</div>;
+  const parts = [`${s.approved.length} exercise update(s)`];
+  if (s.lessons_held.length) parts.push(`${s.lessons_held.join(', ')} marked Held`);
+  if (s.feedback_id) parts.push('feedback and homework added');
+  return (
+    <div style={{ fontSize: '0.8rem', marginTop: 2 }}>
+      <Badge tone="info">auto</Badge> Filled in: {parts.join(', ')}
+      {s.left_for_review.length ? ` · ${s.left_for_review.length} left for you to check` : ''}{' '}
+      <button
+        className="btn small"
+        disabled={act.busy}
+        onClick={() =>
+          window.confirm('Undo the automatic updates from this lesson? The findings go back to Review lessons for you to decide.') &&
+          act.run(async () => {
+            await api.post(`/transcripts/${f.transcript_id}/auto-apply/undo`);
+            onDone();
+          })
+        }
+      >
+        Undo
+      </button>
+      <ErrorBox error={act.error} />
+    </div>
+  );
+}
+
 /** After-lesson automation at a glance: recording reminder, calendar, Hearsay state and the import inbox. */
 export default function AutomationPanel() {
   const { data: st, reload } = useApi('/automation/status');
@@ -111,7 +143,7 @@ export default function AutomationPanel() {
               {st.watcher.last_scan?.error && <span style={{ color: 'var(--critical-text)' }}>{st.watcher.last_scan.error}</span>}
             </div>
             <div className="faint" style={{ fontSize: '0.8rem' }}>
-              Translate: {st.watcher.auto_translate ? 'automatic' : 'manual'} · Claude analysis: {st.watcher.auto_claude_analysis ? 'automatic' : 'manual'}
+              Translate: {st.watcher.auto_translate ? 'automatic' : 'manual'} · Claude analysis: {st.watcher.auto_claude_analysis ? 'automatic' : 'manual'} · Dashboard: {st.watcher.auto_apply ? 'filled in automatically' : 'you approve'}
             </div>
           </div>
         </div>
@@ -143,11 +175,16 @@ export default function AutomationPanel() {
                   {(f.pipeline || []).filter((p) => p.status !== 'done').map((p) => (
                     <div key={p.step} className="faint" style={{ fontSize: '0.78rem' }}>{p.reason}</div>
                   ))}
+                  <AutoApplied f={f} onDone={reload} />
                 </li>
               ))}
             </ul>
             <p style={{ fontSize: '0.85rem', margin: '8px 0 0' }}>
-              Proposed matches are never applied automatically. <Link to="/intelligence">Review them</Link> to update coverage.
+              {st.watcher.auto_apply ? (
+                <>Claude's findings are filled in automatically. Anything it was unsure about waits in <Link to="/intelligence">Review lessons</Link>.</>
+              ) : (
+                <>Proposed matches are not applied automatically. <Link to="/intelligence">Review them</Link> to update coverage.</>
+              )}
             </p>
           </>
         )}

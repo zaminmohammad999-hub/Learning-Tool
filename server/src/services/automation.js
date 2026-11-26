@@ -14,6 +14,8 @@ import { getDb, getMode, nowIso } from '../db/connection.js';
 import { HttpError, audit, getSetting, notFound } from './common.js';
 import { ALLOWED_EXTENSIONS, addTranscript, checksumOf, createSession, deleteTranscript, getTranscript, hearsayFinalised, transcriptMeta, updateSession, validateTranscriptText } from './transcripts.js';
 import { runAnalysis, analysisCostEstimate } from './analysis.js';
+import { autoApplyAnalysis, autoApplyEnabled, getAutoApplied, undoAutoApply } from './autoApply.js';
+import { runLessonReview } from './lessonReview.js';
 import { aiStatus } from './aiClient.js';
 import { translateTranscript, translationEstimate } from './translation.js';
 import { calendarConfigured, calendarStatus, currentOrNextOccurrence, nextPlannedLessonId, occurrenceAt, syncCalendar } from './calendar.js';
@@ -42,6 +44,7 @@ export function watcherSettings() {
     auto_claude_analysis: flag('auto_claude_analysis'),
     auto_max_usd: Number(setting('auto_max_usd', '1')),
     reminders_enabled: flag('reminders_enabled', 'true'),
+    auto_apply: flag('auto_apply'),
   };
 }
 
@@ -152,6 +155,16 @@ export async function scanFolder({ now = new Date() } = {}) {
   }
 }
 
+/** Notification text after the pipeline: what was updated, and what (if anything) needs a look. */
+function pipelineMessage(steps, pending) {
+  const auto = steps.find((s) => s.step === 'auto_apply' && s.status === 'done');
+  if (auto) {
+    const tail = pending ? ` ${pending} item(s) need your check in Learning Studio.` : ' Nothing needs your check.';
+    return `Learning Studio is updated: ${auto.approved} exercise update(s) from ${who().tutor ? `${who().tutor}'s lesson` : 'the lesson'}.${tail}`;
+  }
+  return `${pending} proposed match(es) from ${who().tutor ? `${who().tutor}'s lesson` : 'the lesson'} are ready to review in Learning Studio.`;
+}
+
 /**
  * Hearsay writes the transcript in bursts during the recording and adds its footer only when you press Stop.
  * An unfinished file is never imported while Hearsay is recording; only if it has sat untouched for a long
@@ -189,7 +202,9 @@ async function refreshImportedFile(row, st, now) {
     return markSeen(row.reason), false;
   }
   if (old.checksum === checksumOf(text)) return markSeen(row.reason), false;
-  const approved = db().prepare('SELECT COUNT(*) n FROM exercise_evidence WHERE transcript_id = ?').get(old.id).n;
+  // Only approvals you made yourself block the swap; automatic ones are undone and re-applied from the full text.
+  const approved = db().prepare('SELECT COUNT(*) n FROM exercise_evidence WHERE transcript_id = ? AND approved_by <> ?').get(old.id, 'auto').n;
+  if (!approved && getAutoApplied(old.id) && !getAutoApplied(old.id).undone_at) undoAutoApply(old.id, 'automation');
   if (approved) {
     markSeen('Hearsay added more to this file after you had approved matches, so it was not replaced. Import the full version by hand if needed.');
     return false;
@@ -212,7 +227,7 @@ async function refreshImportedFile(row, st, now) {
   const pending = db().prepare("SELECT COUNT(*) n FROM evidence_matches WHERE transcript_id = ? AND review_status = 'pending'").get(t.id).n;
   notify(
     `${row.lesson_id ? `Lesson ${Number(row.lesson_id.slice(1))}` : 'Lesson'} transcript complete`,
-    `${who().learner ? `${who().learner}, ` : ''}the full recording is in. ${pending} proposed match(es) are ready to review in Learning Studio.`
+    `${who().learner ? `${who().learner}, ` : ''}the full recording is in. ${pipelineMessage(steps, pending)}`
   );
   return true;
 }
@@ -270,7 +285,7 @@ export async function importWatchedFile(fileId, { lesson_id, actor = 'user', tex
   const pending = db().prepare("SELECT COUNT(*) n FROM evidence_matches WHERE transcript_id = ? AND review_status = 'pending'").get(t.id).n;
   notify(
     `${lesson_id ? `Lesson ${Number(lesson_id.slice(1))}` : 'New'} transcript imported`,
-    `${who().learner ? `${who().learner}, ` : ''}${pending} proposed match(es) from ${who().tutor ? `${who().tutor}'s lesson` : 'the lesson'} are ready to review in Learning Studio.${steps.some((x) => x.status === 'skipped' && x.step === 'translate') ? ' Translation still needed.' : ''}`
+    `${who().learner ? `${who().learner}, ` : ''}${pipelineMessage(steps, pending)}${steps.some((x) => x.status === 'skipped' && x.step === 'translate') ? ' Translation still needed.' : ''}`
   );
   return { status: 'imported', transcript_id: t.id, session_id: session.id, steps };
 }
@@ -326,8 +341,38 @@ export async function runPipeline(transcriptId, actor = 'automation') {
       try {
         const a = await runAnalysis(transcriptId, 'claude', actor);
         steps.push({ step: 'claude_analysis', status: 'done', detail: `${a.matches.length} proposed match(es)`, analysis_id: a.id });
+        if (autoApplyEnabled()) {
+          try {
+            const r = autoApplyAnalysis(a.id);
+            if (r)
+              steps.push({
+                step: 'auto_apply',
+                status: 'done',
+                detail: `${r.approved.length} exercise update(s) applied, ${r.left_for_review.length} left for you to check${r.lessons_held.length ? `, ${r.lessons_held.join(', ')} marked Held` : ''}${r.feedback_id ? ', feedback added' : ''}`,
+                approved: r.approved.length,
+                left_for_review: r.left_for_review.length,
+              });
+          } catch (err) {
+            steps.push({ step: 'auto_apply', status: 'failed', reason: err.message });
+          }
+        }
       } catch (err) {
         steps.push({ step: 'claude_analysis', status: 'failed', reason: err.message });
+      }
+    }
+  }
+  // Lesson review: how well each objective of the lesson was covered (generous scores), shown on the lesson page.
+  if (steps.some((x) => x.step === 'claude_analysis' && x.status === 'done')) {
+    const lessons = db()
+      .prepare('SELECT sl.lesson_id FROM session_lessons sl JOIN transcripts t ON t.session_id = sl.session_id WHERE t.id = ?')
+      .all(transcriptId)
+      .map((r) => r.lesson_id);
+    for (const lid of lessons) {
+      try {
+        const r = await runLessonReview(lid, actor);
+        steps.push({ step: 'lesson_review', status: 'done', detail: `${lid}: ${r.overall_score}% covered` });
+      } catch (err) {
+        steps.push({ step: 'lesson_review', status: 'failed', reason: err.message });
       }
     }
   }
@@ -385,12 +430,12 @@ export function automationStatus(now = new Date()) {
   const files = db()
     .prepare(
       `SELECT w.id, w.filename, w.status, w.reason, w.recorded_at, w.duration_minutes, w.lesson_id, w.transcript_id, w.session_id, w.pipeline_json, w.updated_at,
-              t.language, t.translation_status
-       FROM watched_files w LEFT JOIN transcripts t ON t.id = w.transcript_id
+              t.language, t.translation_status, aa.applied_at AS auto_applied_at, aa.undone_at AS auto_undone_at, aa.summary_json AS auto_summary_json
+       FROM watched_files w LEFT JOIN transcripts t ON t.id = w.transcript_id LEFT JOIN auto_applied aa ON aa.transcript_id = w.transcript_id
        ORDER BY COALESCE(w.recorded_at, w.detected_at) DESC LIMIT 40`
     )
     .all()
-    .map((f) => ({ ...f, pipeline: f.pipeline_json ? JSON.parse(f.pipeline_json) : null, pipeline_json: undefined }));
+    .map((f) => ({ ...f, pipeline: f.pipeline_json ? JSON.parse(f.pipeline_json) : null, pipeline_json: undefined, auto_summary: f.auto_summary_json ? JSON.parse(f.auto_summary_json) : null, auto_summary_json: undefined }));
   return {
     mode: getMode(),
     paused: getMode() === 'demo',

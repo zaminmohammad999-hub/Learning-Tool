@@ -382,4 +382,35 @@ CREATE TRIGGER segments_au AFTER UPDATE OF text, speaker ON transcript_segments 
 END;
 `,
   },
+  {
+    version: 3,
+    name: 'automatic application of Claude findings (undoable)',
+    sql: `
+-- What was applied automatically from one transcript's Claude analysis, with the "before" state needed to undo it.
+CREATE TABLE auto_applied (
+  transcript_id INTEGER PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE,
+  analysis_id INTEGER REFERENCES transcript_analyses(id) ON DELETE SET NULL,
+  summary_json TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  undone_at TEXT
+);
+`,
+  },
+  {
+    version: 4,
+    name: 'lesson reviews (Claude scores how well each objective was covered)',
+    sql: `
+CREATE TABLE lesson_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lesson_id TEXT NOT NULL REFERENCES lessons(id),
+  transcript_ids TEXT NOT NULL,
+  model TEXT,
+  overall_score INTEGER,
+  review_json TEXT NOT NULL,
+  usage_json TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX ix_lesson_reviews ON lesson_reviews(lesson_id, id);
+`,
+  },
 ];

@@ -55,6 +55,8 @@ function evCitation(ev) {
 
 function detectIntent(q) {
   const s = q.toLowerCase();
+  // "What did we cover?" is a summary question, not "have we done <topic>?": check it first.
+  if (/\bwhat (did|have) (we|i) (cover|covered|do|done|learn|learned|learnt)( so far| today| yet| in (the |this |our )?(last |latest )?(lesson|session|class))?\s*[?.!]*\s*$/.test(s)) return 'covered';
   if (/\b(have|has|did) (we|i)\b.*\b(demonstrat|practi[cs]|cover|done|do|run|ran|learn|taught)/.test(s) || /\bhave we (demonstrated|done|covered)/.test(s)) return 'have_we';
   if (/\b(miss|missed|missing|gap|gaps|haven'?t covered|not covered|left out)\b/.test(s)) return 'missed';
   if (/\b(next|cover next|should my tutor|plan for)\b/.test(s)) return 'next';

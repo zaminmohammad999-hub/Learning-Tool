@@ -17,6 +17,8 @@ import { getDb } from '../db/connection.js';
 import * as translation from '../services/translation.js';
 import * as automation from '../services/automation.js';
 import * as calendar from '../services/calendar.js';
+import * as autoApply from '../services/autoApply.js';
+import * as lessonReview from '../services/lessonReview.js';
 import { notify } from '../services/hearsayMonitor.js';
 
 export const api = express.Router();
@@ -151,6 +153,17 @@ api.post('/transcripts/:id/translate', async (req, res) => {
   const a = parse(z.object({ reanalyse: z.boolean().default(true) }), req.body || {}).reanalyse ? await analysis.runAnalysis(tid, 'rule_based', actorOf(req)) : null;
   res.json({ ...result, analysis_id: a?.id ?? null });
 });
+api.get('/lessons/:lessonId/review', (req, res) => res.json(lessonReview.getLessonReview(parse(lessonId, req.params.lessonId))));
+api.post('/lessons/:lessonId/review', async (req, res) => res.status(201).json(await lessonReview.runLessonReview(parse(lessonId, req.params.lessonId), actorOf(req))));
+api.get('/transcripts/:id/auto-applied', (req, res) => res.json(autoApply.getAutoApplied(id(req))));
+api.post('/transcripts/:id/auto-apply/undo', (req, res) => res.json(autoApply.undoAutoApply(id(req), actorOf(req))));
+// Apply the latest Claude analysis of a transcript now (e.g. a lesson imported before auto-apply was switched on).
+api.post('/transcripts/:id/auto-apply', (req, res) => {
+  const tid = id(req);
+  const latest = getDb().prepare("SELECT id FROM transcript_analyses WHERE transcript_id = ? AND method = 'claude' AND status = 'completed' ORDER BY version DESC LIMIT 1").get(tid);
+  if (!latest) throw new HttpError(400, 'This transcript has no completed Claude analysis to apply.');
+  res.json(autoApply.autoApplyAnalysis(latest.id));
+});
 api.get('/analyses/:id', (req, res) => res.json(analysis.getAnalysis(id(req))));
 
 // ───────── Automation (folder watcher, calendar, Hearsay) ─────────
@@ -173,7 +186,19 @@ api.get('/review/pending', (req, res) => {
     )
     .all();
   const analysisIds = [...new Set(rows.map((r) => r.analysis_id))];
-  res.json(analysisIds.map((a) => analysis.getAnalysis(a)));
+  const source = getDb().prepare(
+    `SELECT t.id AS transcript_id, t.filename, t.segment_count, t.language, t.translation_status, s.id AS session_id, s.title AS session_title,
+            s.session_date, s.duration_minutes, s.tutor, (SELECT group_concat(lesson_id) FROM session_lessons sl WHERE sl.session_id = s.id) AS lesson_ids,
+            EXISTS (SELECT 1 FROM watched_files w WHERE w.transcript_id = t.id) AS auto_imported
+     FROM transcripts t JOIN tutoring_sessions s ON s.id = t.session_id WHERE t.id = ?`
+  );
+  // Claude's analysis first: it is the more accurate set when both exist.
+  const list = analysisIds.map((a) => {
+    const an = analysis.getAnalysis(a);
+    return { ...an, source: source.get(an.transcript_id) || null };
+  });
+  list.sort((a, b) => (b.source?.session_date || '').localeCompare(a.source?.session_date || '') || (a.method === 'claude' ? -1 : 1) - (b.method === 'claude' ? -1 : 1));
+  res.json(list);
 });
 const decisionSchema = z.object({
   decision: z.enum(['approve', 'reject', 'adjust']),
