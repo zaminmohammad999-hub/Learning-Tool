@@ -97,6 +97,12 @@ export default function AutomationPanel() {
           <strong>{st.alert.title}.</strong> {st.alert.body}
         </div>
       )}
+      {st.credit?.low && (
+        <div className="notice warn" role="alert" style={{ marginBottom: 12 }}>
+          <strong>{st.credit.ran_out ? 'Claude credit has run out.' : `Claude credit is running low: about $${st.credit.remaining_usd.toFixed(2)} left.`}</strong> After each lesson, open Claude Code and type{' '}
+          <code>/process-lesson</code>. It does the same work on your Pro plan.
+        </div>
+      )}
       <Card
         title="Lesson automation"
         actions={
@@ -106,6 +112,11 @@ export default function AutomationPanel() {
           </span>
         }
       >
+        {st.credit?.remaining_usd != null && (
+          <p className="faint" style={{ fontSize: '0.8rem', margin: '0 0 8px' }}>
+            Claude credit: about ${st.credit.remaining_usd.toFixed(2)} of ${st.credit.bought_usd} left (estimated from this app's calls).
+          </p>
+        )}
         <div className="grid cols-3">
           <div>
             <div className="faint" style={{ fontSize: '0.8rem' }}>Next lesson (calendar)</div>

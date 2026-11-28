@@ -496,6 +496,8 @@ test('auto-apply: Claude findings fill the dashboard (status, coverage, Held, fe
 });
 
 test('lesson review: per-objective coverage with generous scores, stored and shown per lesson', async () => {
+  let hwOld = null;
+  let hwOther = null;
   const { app } = await makeApp();
   await request(app).patch('/api/settings').send({ ai_enabled: 'true' }).expect(200);
   let system = '';
@@ -512,7 +514,18 @@ test('lesson review: per-objective coverage with generous scores, stored and sho
                 { exercise_id: 'D2-C2-E2', coverage: 'demonstrated', score: 140, summary: 'Fariha showed git clone.', evidence_segment: 5 },
                 { exercise_id: 'D9-C9-E9', coverage: 'demonstrated', score: 90, summary: 'not a lesson objective', evidence_segment: null },
               ],
-              overall_score: 62, overall_summary: 'Good start.', went_well: ['clone'], to_practise: ['fetch'],
+              overall_score: 62, overall_summary: 'Good start.', went_well: ['clone'],
+              tutor_perspective: {
+                positives: ['Fariha liked how quickly Mohammad cloned the repo.'],
+                concerns: ['She was not sure he understands fetch vs pull.'],
+                questions: ['What does git fetch change on your computer?'],
+                analysis: 'She seems to be checking whether he understands remote vs local before moving on.',
+              },
+              homework_reviews: [
+                { homework_id: hwOld, verdict: 'approved', evidence_segment: 7, note: 'Fariha watched him push and said it was good.' },
+                { homework_id: hwOther, verdict: 'not_discussed', evidence_segment: null, note: '' },
+                { homework_id: 9999, verdict: 'approved', evidence_segment: null, note: 'unknown id' },
+              ],
             },
           };
         },
@@ -522,6 +535,9 @@ test('lesson review: per-objective coverage with generous scores, stored and sho
   const { FIXTURE } = await import('./helpers.js');
   await request(app).post('/api/transcripts').send({ text: FIXTURE, filename: 'l6.txt', session: { session_date: '2026-11-26', lesson_ids: ['L06'] } }).expect(201);
   assert.equal((await request(app).get('/api/lessons/L06/review')).body, null);
+  await request(app).patch('/api/settings').send({ tutor_name: 'Fariha' }).expect(200);
+  hwOld = (await request(app).post('/api/homework').send({ description: 'Push the repo', lesson_id: 'L05' }).expect(201)).body.id;
+  hwOther = (await request(app).post('/api/homework').send({ description: 'Read about branches', lesson_id: 'L05' }).expect(201)).body.id;
   const r = (await request(app).post('/api/lessons/L06/review').send({}).expect(201)).body;
   assert.match(system, /generous/i);
   assert.equal(r.overall_score, 62);
@@ -533,4 +549,183 @@ test('lesson review: per-objective coverage with generous scores, stored and sho
   assert.equal(r.objectives.find((o) => o.exercise_id === 'D2-C2-E4').coverage, 'not_covered');
   assert.equal((await request(app).get('/api/lessons/L06/review')).body.overall_score, 62);
   await request(app).post('/api/lessons/L01/review').send({}).expect(400);
+
+  // Fariha's perspective lands in the lesson's automatic feedback entry.
+  const fb = (await request(app).get('/api/feedback')).body.find((f) => f.lesson_id === 'L06');
+  assert.match(fb.author, /automatic/);
+  assert.match(fb.strengths, /cloned the repo/);
+  assert.match(fb.weaknesses, /fetch vs pull/);
+  assert.match(fb.tutor_questions, /git fetch change/);
+  assert.match(fb.analysis, /seems to be checking/);
+  // Homework she approved out loud in the lesson is approved; the rest is untouched.
+  const hw = (await request(app).get('/api/homework')).body;
+  const old = hw.find((h) => h.id === hwOld);
+  assert.equal(old.review_status, 'approved');
+  assert.equal(old.approval_method, 'transcript');
+  assert.match(old.approved_by, /Fariha \(in Lesson 6\)/);
+  assert.equal(hw.find((h) => h.id === hwOther).review_status, 'not_submitted');
+});
+
+test('homework: submit a Loom link, the tutor approves or asks for more work', async () => {
+  const { app } = await makeApp();
+  await request(app).patch('/api/settings').send({ tutor_name: 'Fariha' }).expect(200);
+  const h = (await request(app).post('/api/homework').send({ description: 'Practise git in PowerShell', lesson_id: 'L01' }).expect(201)).body;
+  assert.equal(h.review_status, 'not_submitted');
+  await request(app).post(`/api/homework/${h.id}/submit`).send({ url: 'not-a-link' }).expect(400);
+  const s = (await request(app).post(`/api/homework/${h.id}/submit`).send({ url: 'https://www.loom.com/share/abc', note: 'Ran 5 commands' }).expect(200)).body;
+  assert.equal(s.review_status, 'submitted');
+  const more = (await request(app).post(`/api/homework/${h.id}/review`).send({ verdict: 'changes_requested', method: 'loom', note: 'Also show git log' }).expect(200)).body;
+  assert.equal(more.review_status, 'changes_requested');
+  assert.equal(more.status, 'open');
+  const ok = (await request(app).post(`/api/homework/${h.id}/review`).send({ verdict: 'approved', method: 'live' }).expect(200)).body;
+  assert.equal(ok.review_status, 'approved');
+  assert.equal(ok.status, 'done');
+  assert.equal(ok.approved_by, 'Fariha');
+  await request(app).post(`/api/homework/${h.id}/submit`).send({ url: 'https://www.loom.com/share/x' }).expect(409);
+});
+
+test('tutor intelligence: short lesson review and a suggested format for the next lesson', async () => {
+  const { app } = await makeApp();
+  await request(app).patch('/api/settings').send({ ai_enabled: 'true', tutor_name: 'Fariha', learner_name: 'Mohammad' }).expect(200);
+  const seen = [];
+  setAiClientForTests({
+    beta: {
+      messages: {
+        parse: async (params) => {
+          seen.push(params);
+          const isFormat = /NEXT coding lesson/.test(params.system);
+          return {
+            stop_reason: 'end_turn', model: params.model, usage: { input_tokens: 5, output_tokens: 5 },
+            parsed_output: isFormat
+              ? {
+                  goal: 'Use the terminal confidently.',
+                  agenda: [
+                    { minutes: 10, title: 'Homework check', tutor_does: 'Reviews Loom', learner_does: 'Shows git push' },
+                    { minutes: 50, title: 'Terminal basics', tutor_does: 'Demonstrates cd and ls', learner_does: 'Repeats each command' },
+                  ],
+                  explanations: ['What a path is'],
+                  exercises: [{ objective: 'Navigate folders', task: 'cd into the project and list files' }],
+                  before_the_lesson: { tutor: ['Prepare a sample folder'], learner: ['Open PowerShell'] },
+                  carry_over: ['git fetch vs pull'],
+                }
+              : {
+                  covered: ['Cloning a repository (objective: clone)'],
+                  missed: ['git fetch was only mentioned'],
+                  next_steps: ['Practise fetch then status'],
+                  how_to_run_the_lesson: ['Demonstrate, then let Mohammad repeat'],
+                  learner_during_lesson: ['Drive the keyboard'],
+                  learner_organisation: ['Keep one folder per lesson'],
+                },
+          };
+        },
+      },
+    },
+  });
+  const { FIXTURE } = await import('./helpers.js');
+  await request(app).post('/api/transcripts').send({ text: FIXTURE, filename: 'l6.txt', session: { session_date: '2026-11-26', lesson_ids: ['L06'] } }).expect(201);
+  await request(app).post('/api/homework').send({ description: 'Practise git fetch', lesson_id: 'L06' }).expect(201);
+
+  await request(app).post('/api/insights/L05/review').send({}).expect(400); // no transcript
+  const rev = (await request(app).post('/api/insights/L06/review').send({}).expect(201)).body;
+  assert.deepEqual(rev.missed, ['git fetch was only mentioned']);
+  assert.match(seen[0].messages[0].content, /<transcript>/);
+
+  const start = new Date(Date.now() + 2 * 86400000);
+  setCalendarSourceForTests(async () => ics([{ uid: 'n@x', start, end: new Date(start.getTime() + 90 * 60000), summary: 'Vibe Coding Lesson 7' }]));
+  await syncCalendar();
+  const fmt = (await request(app).post('/api/insights/L07/format').send({}).expect(201)).body;
+  assert.equal(fmt.minutes, 90, 'agenda is sized to the calendar slot');
+  assert.equal(fmt.agenda.length, 2);
+  const ctx = seen[1].messages[0].content;
+  assert.match(ctx, /90 minutes/);
+  assert.match(ctx, /Practise git fetch/, 'open homework is carried into the plan');
+  assert.ok(!/<transcript>/.test(ctx), 'the format is built from records, not the raw transcript');
+
+  const saved = (await request(app).get('/api/insights/L06')).body;
+  assert.deepEqual(saved.review.covered, rev.covered);
+  assert.equal((await request(app).get('/api/insights/L07')).body.format.goal, 'Use the terminal confidently.');
+});
+
+test('Claude Code mode (/process-lesson): answers written in Claude Code go through the normal pipeline with no API call and no credit used', async () => {
+  const { app } = await makeApp();
+  const { useExternalAnswers, CLAUDE_CODE_MODEL } = await import('../src/services/aiClient.js');
+  const { translateTranscript } = await import('../src/services/translation.js');
+  const { runAnalysis } = await import('../src/services/analysis.js');
+  const { autoApplyAnalysis } = await import('../src/services/autoApply.js');
+  const { runLessonReview } = await import('../src/services/lessonReview.js');
+  const { runLessonBrief, runLessonFormat, getInsights } = await import('../src/services/insights.js');
+  setNotifierForTests(() => {});
+  // The API is off (no key in tests): this must still work.
+  await request(app).patch('/api/settings').send({ auto_apply: 'true', tutor_name: 'Fariha', learner_name: 'Mohammad' }).expect(200);
+  const t = (await request(app).post('/api/transcripts').send({ text: URDU, filename: 'transcript_20261130_160000.md', session: { session_date: '2026-11-30', lesson_ids: ['L06'] } }).expect(201)).body;
+  try {
+    useExternalAnswers({ translations: { 1: 'Hello. Today we will clone the repository.', 2: 'Now run git clone https://github.com/demo/repo.git and cd into the folder.', 3: 'Yes, I ran git clone and it worked.' } });
+    const tr = await translateTranscript(t.id, 'claude-code');
+    assert.equal(tr.translated, 3);
+    assert.equal(tr.model, CLAUDE_CODE_MODEL);
+
+    // Answers that do not match the schema are refused before anything is saved.
+    assert.throws(() => useExternalAnswers({ review: { objectives: 'wrong' } }));
+
+    const list = [];
+    useExternalAnswers({
+      analysis: {
+        findings: [
+          { exercise_id: 'D2-C2-E2', category: 'demonstrated', confidence: 0.9, evidence_quote: 'git clone https://github.com/demo/repo.git', segment_number: 2, guided_or_independent: 'guided', rationale: 'Fariha had Mohammad clone the repo.' },
+          { exercise_id: 'D2-C2-E3', category: 'demonstrated', confidence: 0.9, evidence_quote: 'this sentence was never said', segment_number: 3, guided_or_independent: 'guided', rationale: 'invented' },
+        ],
+        commands_executed: [{ text: 'git clone', segment_number: 2 }], commands_mentioned_only: list, difficulties: list, decisions: list,
+        tutor_feedback: [{ text: 'Fariha said the clone went well.', segment_number: 3 }], homework: [{ text: 'Practise git clone on a new repo.', segment_number: 2 }], unresolved_questions: list, topics: ['git clone'],
+      },
+      review: {
+        objectives: [{ exercise_id: 'D2-C2-E2', coverage: 'demonstrated', score: 80, summary: 'Mohammad cloned the repo with Fariha.', evidence_segment: 2 }],
+        overall_score: 60, overall_summary: 'Clone covered.', went_well: ['Clone worked'],
+        tutor_perspective: { positives: ['Clone worked'], concerns: [], questions: ['Did the clone work?'], analysis: 'She seems pleased.' },
+        homework_reviews: [],
+      },
+      brief: { covered: ['Clone'], missed: [], next_steps: ['Fetch'], how_to_run_the_lesson: ['Demo then practise'], learner_during_lesson: ['Drive the keyboard'], learner_organisation: ['One folder'] },
+      format: { goal: 'Branches', agenda: [{ minutes: 60, title: 'Branches', tutor_does: 'Shows', learner_does: 'Repeats' }], explanations: ['Branch'], exercises: [{ objective: 'Branch', task: 'Make one' }], before_the_lesson: { tutor: [], learner: [] }, carry_over: [] },
+    });
+    const a = await runAnalysis(t.id, 'claude', 'claude-code');
+    assert.equal(a.model, CLAUDE_CODE_MODEL);
+    assert.deepEqual(a.matches.map((m) => m.exercise_id), ['D2-C2-E2'], 'the invented quote is dropped by the usual check');
+    const applied = autoApplyAnalysis(a.id);
+    assert.equal(applied.approved.length, 1);
+    assert.deepEqual(applied.lessons_held, ['L06']);
+    const rev = await runLessonReview('L06', 'claude-code');
+    assert.equal(rev.overall_score, 60);
+    await runLessonBrief('L06');
+    await runLessonFormat('L07');
+    assert.deepEqual(getInsights('L06').review.covered, ['Clone']);
+    assert.equal(getInsights('L07').format.goal, 'Branches');
+  } finally {
+    useExternalAnswers(null);
+  }
+  const credit = (await request(app).get('/api/credit')).body;
+  assert.equal(credit.calls, 0, 'Claude Code mode never uses API credit');
+  assert.equal((await request(app).get('/api/settings')).body.ai.available, false, 'the API stays off afterwards');
+});
+
+test('credit: every API call is costed, a low balance warns once, and running out points to /process-lesson', async () => {
+  const { app } = await makeApp();
+  fakeTranslator();
+  const toasts = [];
+  setNotifierForTests((title, body) => toasts.push({ title, body }));
+  await request(app).patch('/api/settings').send({ ai_enabled: 'true', api_credit_usd: '1', api_credit_warn_usd: '1' }).expect(200);
+  const t = (await request(app).post('/api/transcripts').send({ text: URDU, filename: 'transcript_20261124_190512.md', session: { session_date: '2026-11-24', lesson_ids: ['L06'] } }).expect(201)).body;
+  await request(app).post(`/api/transcripts/${t.id}/translate`).send({ reanalyse: false }).expect(200);
+  let c = (await request(app).get('/api/credit')).body;
+  assert.equal(c.calls, 1);
+  assert.ok(c.remaining_usd <= 1 && c.low);
+  assert.equal(toasts.filter((x) => /running low/.test(x.title)).length, 1);
+  await request(app).post(`/api/transcripts/${t.id}/translate`).send({ reanalyse: false }).expect(200);
+  assert.equal(toasts.filter((x) => /running low/.test(x.title)).length, 1, 'warned only once');
+
+  setAiClientForTests({ beta: { messages: { parse: async () => { throw new Error('400 Your credit balance is too low to access the Anthropic API.'); } } } });
+  const fail = await request(app).post(`/api/transcripts/${t.id}/translate`).send({ reanalyse: false });
+  assert.match(fail.body.error, /\/process-lesson/);
+  c = (await request(app).get('/api/credit')).body;
+  assert.equal(c.ran_out, true);
+  assert.equal(toasts.filter((x) => /run out/.test(x.title)).length, 1);
+  assert.ok((await request(app).get('/api/automation/status')).body.credit.low);
 });

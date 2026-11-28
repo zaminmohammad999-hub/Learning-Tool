@@ -21,6 +21,7 @@ import { translateTranscript, translationEstimate } from './translation.js';
 import { calendarConfigured, calendarStatus, currentOrNextOccurrence, nextPlannedLessonId, occurrenceAt, syncCalendar } from './calendar.js';
 import { hearsayStatus, notify } from './hearsayMonitor.js';
 import { config } from '../config.js';
+import { creditStatus } from './credit.js';
 
 const db = () => getDb();
 const SETTLE_MS = 15_000; // file must be unchanged this long before reading
@@ -446,6 +447,7 @@ export function automationStatus(now = new Date()) {
     files,
     inbox_count: files.filter((f) => f.status === 'needs_review').length,
     ai: { available: aiStatus().available },
+    credit: creditStatus(),
   };
 }
 

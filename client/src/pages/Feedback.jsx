@@ -1,3 +1,4 @@
+import { HomeworkList } from '../components/Homework.jsx';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
@@ -5,13 +6,15 @@ import { useApi, useAction } from '../hooks.js';
 import { Badge, Card, Empty, ErrorBox, Field, Loading, today } from '../components/ui.jsx';
 
 const TEXT_FIELDS = [
-  ['strengths', 'Strengths'],
-  ['weaknesses', 'Weaknesses'],
+  ['strengths', 'Positives (what she liked)'],
+  ['weaknesses', 'Concerns'],
   ['misunderstandings', 'Misunderstandings'],
   ['corrections', 'Corrections given'],
   ['practiced', 'What was practised'],
   ['homework', 'Homework (summary)'],
   ['next_priorities', 'Next session priorities'],
+  ['tutor_questions', 'Questions she asked'],
+  ['analysis', 'What she seems to be thinking (interpretation)'],
 ];
 
 function FeedbackForm({ initial, preset, onSaved, onCancel }) {
@@ -112,9 +115,15 @@ function FeedbackItem({ f, onChanged }) {
         </>
       }
     >
+      {f.analysis && (
+        <div className="notice" style={{ fontSize: '0.9rem', marginBottom: 8 }}>
+          <strong>What she seems to be thinking</strong> <span className="faint">(Claude's interpretation of the lesson)</span>
+          <div style={{ marginTop: 4 }}>{f.analysis}</div>
+        </div>
+      )}
       <div className="grid cols-2" style={{ fontSize: '0.9rem' }}>
-        {TEXT_FIELDS.filter(([k]) => f[k]).map(([k, l]) => (
-          <div key={k}><strong>{l}:</strong> {f[k]}</div>
+        {TEXT_FIELDS.filter(([k]) => f[k] && k !== 'analysis').map(([k, l]) => (
+          <div key={k} style={{ whiteSpace: 'pre-line' }}><strong>{l}:</strong>{'\n'}{f[k]}</div>
         ))}
       </div>
       <p className="faint" style={{ fontSize: '0.82rem', marginTop: 6 }}>
@@ -137,24 +146,17 @@ function FeedbackItem({ f, onChanged }) {
   );
 }
 
-function HomeworkList() {
+function AllHomework() {
   const { data, reload } = useApi('/homework');
-  const act = useAction();
+  const { data: settings } = useApi('/settings');
   if (!data) return <Loading />;
-  if (!data.length) return <Empty>No homework recorded.</Empty>;
   return (
-    <table>
-      <tbody>
-        {data.map((h) => (
-          <tr key={h.id}>
-            <td><input type="checkbox" checked={h.status === 'done'} aria-label="Done" onChange={(e) => act.run(async () => { await api.patch(`/homework/${h.id}`, { status: e.target.checked ? 'done' : 'open' }); reload(); })} /></td>
-            <td style={{ textDecoration: h.status === 'done' ? 'line-through' : undefined }}>{h.description}</td>
-            <td className="faint">{h.lesson_number ? `L${h.lesson_number}` : ''}</td>
-            <td className="faint">{h.due_date ? `due ${h.due_date}` : ''}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <p className="faint" style={{ fontSize: '0.82rem', marginTop: 0 }}>
+        Homework is complete when {settings?.settings?.tutor_name || 'your tutor'} approves it: send her a Loom video and record her decision, or do it in front of her. Approvals she gives during a recorded lesson are picked up automatically.
+      </p>
+      <HomeworkList items={data} tutor={settings?.settings?.tutor_name || 'Tutor'} onChange={reload} />
+    </>
   );
 }
 
@@ -184,7 +186,7 @@ export default function Feedback() {
           {data && !data.length && <Empty>No feedback yet.</Empty>}
           {data?.map((f) => <FeedbackItem key={f.id} f={f} onChanged={reload} />)}
         </div>
-        <Card title="Homework"><HomeworkList /></Card>
+        <Card title="Homework"><AllHomework /></Card>
       </div>
     </div>
   );

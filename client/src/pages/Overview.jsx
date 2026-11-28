@@ -134,7 +134,7 @@ export default function Overview() {
             <Empty>Nothing overdue. Set a programme start date in Settings to track lesson dates.</Empty>
           )}
         </Card>
-        <Card title="Recent sessions" actions={<Link to="/intelligence">+ add transcript</Link>}>
+        <Card title="Recent sessions">
           {s.recent_sessions.length ? (
             <ul style={{ paddingLeft: 18, margin: 0 }}>
               {s.recent_sessions.map((r) => (

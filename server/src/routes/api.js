@@ -19,7 +19,9 @@ import * as automation from '../services/automation.js';
 import * as calendar from '../services/calendar.js';
 import * as autoApply from '../services/autoApply.js';
 import * as lessonReview from '../services/lessonReview.js';
+import * as insights from '../services/insights.js';
 import { notify } from '../services/hearsayMonitor.js';
+import { creditStatus } from '../services/credit.js';
 
 export const api = express.Router();
 const id = (req) => {
@@ -82,7 +84,11 @@ api.patch('/lessons/:lessonId/progress', (req, res) => {
     }),
     req.body
   );
-  res.json(progress.updateLessonProgress(req.params.lessonId, body, actorOf(req)));
+  const updated = progress.updateLessonProgress(req.params.lessonId, body, actorOf(req));
+  // Once a lesson is held, score its objectives from the transcript (in the background, if not scored yet).
+  if (body.status === 'held' && aiStatus().available && !lessonReview.getLessonReview(req.params.lessonId) && updated.sessions?.length)
+    lessonReview.runLessonReview(req.params.lessonId, 'auto').catch((err) => console.error('[lesson review]', err.message));
+  res.json(updated);
 });
 api.patch('/domain-assessments/:daId', (req, res) => {
   const body = parse(z.object({ scheduled_date: optDate }), req.body);
@@ -153,6 +159,9 @@ api.post('/transcripts/:id/translate', async (req, res) => {
   const a = parse(z.object({ reanalyse: z.boolean().default(true) }), req.body || {}).reanalyse ? await analysis.runAnalysis(tid, 'rule_based', actorOf(req)) : null;
   res.json({ ...result, analysis_id: a?.id ?? null });
 });
+api.get('/insights/:lessonId', (req, res) => res.json(insights.getInsights(parse(lessonId, req.params.lessonId))));
+api.post('/insights/:lessonId/review', async (req, res) => res.status(201).json(await insights.runLessonBrief(parse(lessonId, req.params.lessonId))));
+api.post('/insights/:lessonId/format', async (req, res) => res.status(201).json(await insights.runLessonFormat(parse(lessonId, req.params.lessonId))));
 api.get('/lessons/:lessonId/review', (req, res) => res.json(lessonReview.getLessonReview(parse(lessonId, req.params.lessonId))));
 api.post('/lessons/:lessonId/review', async (req, res) => res.status(201).json(await lessonReview.runLessonReview(parse(lessonId, req.params.lessonId), actorOf(req))));
 api.get('/transcripts/:id/auto-applied', (req, res) => res.json(autoApply.getAutoApplied(id(req))));
@@ -290,6 +299,8 @@ const feedbackSchema = z.object({
   practiced: z.string().max(10000).nullable().optional(),
   homework: z.string().max(10000).nullable().optional(),
   next_priorities: z.string().max(10000).nullable().optional(),
+  tutor_questions: z.string().max(10000).nullable().optional(),
+  analysis: z.string().max(20000).nullable().optional(),
   exercise_ids: z.array(exerciseId).max(96).optional(),
   homework_items: z.array(z.object({ description: z.string().min(1).max(2000), due_date: optDate, exercise_ids: z.array(exerciseId).optional() })).optional(),
 });
@@ -310,6 +321,15 @@ const homeworkSchema = z.object({
 });
 api.get('/homework', (req, res) => res.json(feedback.listHomework()));
 api.post('/homework', (req, res) => res.status(201).json(feedback.createHomework(parse(homeworkSchema, req.body), actorOf(req))));
+api.post('/homework/:id/submit', (req, res) => {
+  const body = parse(z.object({ url: z.string().trim().max(2000).optional(), note: z.string().max(4000).optional() }), req.body || {});
+  res.json(feedback.submitHomework(id(req), body, actorOf(req)));
+});
+api.post('/homework/:id/review', (req, res) => {
+  const body = parse(z.object({ verdict: z.enum(['approved', 'changes_requested']), method: z.enum(['loom', 'live', 'transcript']), note: z.string().max(4000).optional() }), req.body);
+  const tutor = (getSettings().tutor_name || 'Tutor').trim();
+  res.json(feedback.reviewHomework(id(req), { ...body, reviewer: tutor }, actorOf(req)));
+});
 api.patch('/homework/:id', (req, res) => {
   const body = parse(z.object({ description: z.string().trim().min(1).max(2000).optional(), due_date: optDate, status: z.enum(['open', 'done']).optional() }), req.body);
   res.json(feedback.updateHomework(id(req), body, actorOf(req)));
@@ -337,7 +357,8 @@ api.post('/assistant/chat', async (req, res) => {
 });
 
 // ───────── Settings & data ─────────
-api.get('/settings', (req, res) => res.json({ settings: getSettings(), ai: aiStatus(), mode: getMode() }));
+api.get('/settings', (req, res) => res.json({ settings: getSettings(), ai: aiStatus(), mode: getMode(), credit: creditStatus() }));
+api.get('/credit', (req, res) => res.json(creditStatus()));
 api.patch('/settings', (req, res) => {
   const out = data.updateSettings(parse(z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])), req.body), actorOf(req));
   automation.refreshFolderWatch();

@@ -305,7 +305,6 @@ export default function Sessions() {
           <h1>Session History</h1>
           <p className="muted">Every stored session with its full original transcript, analysis versions, approvals and outcomes. Export/import lives in <Link to="/settings">Settings & Data</Link>.</p>
         </div>
-        <Link className="btn primary" to="/intelligence?lesson=">+ New session / transcript</Link>
       </div>
       <div className={sessionId ? 'grid split' : ''}>
         <Card title={`${data.length} session(s)`}>

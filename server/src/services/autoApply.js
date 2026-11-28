@@ -17,7 +17,7 @@ import { createFeedback, deleteFeedback } from './feedback.js';
 
 const db = () => getDb();
 export const AUTO = 'auto';
-const AUTO_AUTHOR_SUFFIX = '(automatic, from the lesson transcript)';
+export const AUTO_AUTHOR_SUFFIX = '(automatic, from the lesson transcript)';
 
 const texts = (items) => (items || []).map((i) => (typeof i === 'string' ? i : i?.text)).filter(Boolean);
 const bullets = (items) => (items.length ? items.map((t) => `• ${t}`).join('\n') : null);

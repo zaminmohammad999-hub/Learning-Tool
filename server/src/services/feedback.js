@@ -2,7 +2,7 @@ import { getDb, nowIso, tx } from '../db/connection.js';
 import { HttpError, notFound, audit, parseJson, listAudit } from './common.js';
 
 const db = () => getDb();
-const FIELDS = ['session_id', 'lesson_id', 'feedback_date', 'author', 'strengths', 'weaknesses', 'misunderstandings', 'corrections', 'confidence', 'practiced', 'homework', 'next_priorities'];
+const FIELDS = ['session_id', 'lesson_id', 'feedback_date', 'author', 'strengths', 'weaknesses', 'misunderstandings', 'corrections', 'confidence', 'practiced', 'homework', 'next_priorities', 'tutor_questions', 'analysis'];
 
 function shape(f) {
   return f ? { ...f, exercise_ids: parseJson(f.exercise_ids_json, []) } : f;
@@ -102,6 +102,40 @@ export function updateHomework(id, patch, actor) {
   const completedAt = next.status === 'done' ? before.completed_at || nowIso() : null;
   db().prepare('UPDATE homework SET description=?, due_date=?, status=?, completed_at=? WHERE id=?').run(next.description, next.due_date, next.status, completedAt, id);
   audit('homework', id, 'update', before, next, actor);
+  return db().prepare('SELECT * FROM homework WHERE id = ?').get(id);
+}
+
+export const HOMEWORK_REVIEW = ['not_submitted', 'submitted', 'approved', 'changes_requested'];
+export const APPROVAL_METHODS = ['loom', 'live', 'transcript'];
+
+/** Mohammad hands in a homework task, usually as a Loom video link, for the tutor to check. */
+export function submitHomework(id, { url, note }, actor) {
+  const before = db().prepare('SELECT * FROM homework WHERE id = ?').get(id);
+  if (!before) throw notFound(`Homework ${id}`);
+  if (before.review_status === 'approved') throw new HttpError(409, 'This homework is already approved.');
+  if (url && !/^https?:\/\/\S+$/i.test(url)) throw new HttpError(400, 'The link must start with http:// or https://');
+  db()
+    .prepare("UPDATE homework SET review_status = 'submitted', submission_url = ?, submission_note = ?, submitted_at = ? WHERE id = ?")
+    .run(url || null, note || null, nowIso(), id);
+  audit('homework', id, 'submitted', { review_status: before.review_status }, { url, note }, actor);
+  return db().prepare('SELECT * FROM homework WHERE id = ?').get(id);
+}
+
+/**
+ * The tutor's decision on a homework task. Approved = complete. Method: "loom" (she watched the video),
+ * "live" (she saw it done in a lesson) or "transcript" (she approved it out loud in a recorded lesson).
+ */
+export function reviewHomework(id, { verdict, method, reviewer, note }, actor) {
+  const before = db().prepare('SELECT * FROM homework WHERE id = ?').get(id);
+  if (!before) throw notFound(`Homework ${id}`);
+  if (!['approved', 'changes_requested'].includes(verdict)) throw new HttpError(400, 'verdict must be approved or changes_requested');
+  if (!APPROVAL_METHODS.includes(method)) throw new HttpError(400, `method must be one of ${APPROVAL_METHODS.join(', ')}`);
+  const approved = verdict === 'approved';
+  const now = nowIso();
+  db()
+    .prepare('UPDATE homework SET review_status = ?, approved_by = ?, approval_method = ?, reviewed_at = ?, review_note = ?, status = ?, completed_at = ? WHERE id = ?')
+    .run(verdict, reviewer || null, method, now, note || null, approved ? 'done' : 'open', approved ? now : null, id);
+  audit('homework', id, verdict, { review_status: before.review_status }, { method, reviewer, note }, actor);
   return db().prepare('SELECT * FROM homework WHERE id = ?').get(id);
 }
 

@@ -413,4 +413,70 @@ CREATE TABLE lesson_reviews (
 CREATE INDEX ix_lesson_reviews ON lesson_reviews(lesson_id, id);
 `,
   },
+  {
+    version: 5,
+    name: 'tutor perspective in feedback; homework submission and tutor approval',
+    sql: `
+ALTER TABLE tutor_feedback ADD COLUMN tutor_questions TEXT;
+ALTER TABLE tutor_feedback ADD COLUMN analysis TEXT;
+-- Homework is complete only when the tutor approves it (after a Loom video, or seeing it done live).
+ALTER TABLE homework ADD COLUMN review_status TEXT NOT NULL DEFAULT 'not_submitted';
+ALTER TABLE homework ADD COLUMN submission_url TEXT;
+ALTER TABLE homework ADD COLUMN submission_note TEXT;
+ALTER TABLE homework ADD COLUMN submitted_at TEXT;
+ALTER TABLE homework ADD COLUMN approved_by TEXT;
+ALTER TABLE homework ADD COLUMN approval_method TEXT;
+ALTER TABLE homework ADD COLUMN reviewed_at TEXT;
+ALTER TABLE homework ADD COLUMN review_note TEXT;
+UPDATE homework SET review_status = 'approved', approval_method = 'before_approval_existed' WHERE status = 'done';
+`,
+  },
+  {
+    version: 6,
+    name: 'tutor intelligence: lesson briefs and next-lesson formats',
+    sql: `
+-- Latest short review of a held lesson (kind 'review') and the suggested format for a lesson (kind 'format').
+CREATE TABLE lesson_insights (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lesson_id TEXT NOT NULL REFERENCES lessons(id),
+  kind TEXT NOT NULL CHECK (kind IN ('review', 'format')),
+  content_json TEXT NOT NULL,
+  model TEXT,
+  usage_json TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX ix_lesson_insights ON lesson_insights(lesson_id, kind, id);
+`,
+  },
+  {
+    version: 7,
+    name: 'claude api usage ledger for tracking prepaid credit',
+    sql: `
+-- One row per Claude API call, with its estimated cost, so the app can estimate the credit left.
+CREATE TABLE api_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  model TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  usd REAL NOT NULL DEFAULT 0
+);
+-- Backfill the calls made before this ledger existed.
+INSERT INTO api_usage (created_at, purpose, model, input_tokens, output_tokens)
+  SELECT created_at, 'analysis', model, COALESCE(json_extract(usage_json, '$.input_tokens'), 0), COALESCE(json_extract(usage_json, '$.output_tokens'), 0)
+  FROM transcript_analyses WHERE usage_json IS NOT NULL;
+INSERT INTO api_usage (created_at, purpose, model, input_tokens, output_tokens)
+  SELECT created_at, 'lesson_review', model, COALESCE(json_extract(usage_json, '$.input_tokens'), 0), COALESCE(json_extract(usage_json, '$.output_tokens'), 0)
+  FROM lesson_reviews WHERE usage_json IS NOT NULL;
+INSERT INTO api_usage (created_at, purpose, model, input_tokens, output_tokens)
+  SELECT created_at, 'insight_' || kind, model, COALESCE(json_extract(usage_json, '$.input_tokens'), 0), COALESCE(json_extract(usage_json, '$.output_tokens'), 0)
+  FROM lesson_insights WHERE usage_json IS NOT NULL;
+INSERT INTO api_usage (created_at, purpose, model, input_tokens, output_tokens)
+  SELECT created_at, 'translation', json_extract(after_json, '$.model'), COALESCE(json_extract(after_json, '$.usage.input_tokens'), 0), COALESCE(json_extract(after_json, '$.usage.output_tokens'), 0)
+  FROM audit_log WHERE entity_type = 'transcript' AND action = 'translated' AND json_extract(after_json, '$.usage') IS NOT NULL;
+UPDATE api_usage SET usd = (input_tokens * CASE WHEN model LIKE 'claude-sonnet%' THEN 2 WHEN model LIKE 'claude-haiku%' THEN 0.1 WHEN model LIKE 'claude-fable%' THEN 8 ELSE 4 END
+                          + output_tokens * CASE WHEN model LIKE 'claude-sonnet%' THEN 10 WHEN model LIKE 'claude-haiku%' THEN 0.5 WHEN model LIKE 'claude-fable%' THEN 40 ELSE 20 END) / 1000000.0;
+`,
+  },
 ];

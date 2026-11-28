@@ -25,6 +25,8 @@ const USER_TABLES = [
   ['watched_files', null],
   ['auto_applied', null],
   ['lesson_reviews', null],
+  ['lesson_insights', null],
+  ['api_usage', null],
   ['transcript_analyses', null],
   ['evidence_matches', null],
   ['approval_decisions', null],
@@ -60,6 +62,9 @@ const SETTING_RULES = {
   reminders_enabled: (v) => v === 'true' || v === 'false',
   auto_apply: (v) => v === 'true' || v === 'false',
   translation_model: (v) => v === '' || /^claude-[a-z0-9-]{2,60}$/.test(v),
+  // Prepaid Claude API credit bought in total (USD), and the level at which to warn.
+  api_credit_usd: (v) => v === '' || (/^\d+(\.\d{1,2})?$/.test(v) && Number(v) <= 10000),
+  api_credit_warn_usd: (v) => /^\d+(\.\d{1,2})?$/.test(v) && Number(v) <= 1000,
 };
 
 export function updateSettings(patch, actor) {

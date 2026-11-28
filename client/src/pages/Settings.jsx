@@ -10,7 +10,7 @@ function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
   const { data: st, reload } = useApi('/automation/status');
   const bool = (k, d = 'false') => (s[k] ?? d) === 'true';
   const toggle = (k) => (e) => setS({ ...s, [k]: e.target.checked ? 'true' : 'false' });
-  const keys = ['watch_enabled', 'watch_folder', 'calendar_keyword', 'auto_translate', 'auto_claude_analysis', 'auto_apply', 'auto_max_usd', 'reminders_enabled', 'translation_model'];
+  const keys = ['watch_enabled', 'watch_folder', 'calendar_keyword', 'auto_translate', 'auto_claude_analysis', 'auto_apply', 'auto_max_usd', 'reminders_enabled', 'translation_model', 'api_credit_usd', 'api_credit_warn_usd'];
   const after = (m) => {
     done(m);
     reload();
@@ -76,6 +76,20 @@ function AutomationSettings({ s, setS, ai, save, busy, run, done }) {
             <input type="text" placeholder="claude-sonnet-5-5" value={s.translation_model || ''} onChange={(e) => setS({ ...s, translation_model: e.target.value.trim() })} />
           </Field>
         </div>
+        <div className="grid cols-2">
+          <Field label="Claude API credit bought in total (US$, add each top-up)">
+            <input type="number" min={0} step={1} value={s.api_credit_usd ?? ''} onChange={(e) => setS({ ...s, api_credit_usd: e.target.value })} />
+          </Field>
+          <Field label="Warn me when credit falls below (US$)">
+            <input type="number" min={0} step={0.5} value={s.api_credit_warn_usd ?? '3'} onChange={(e) => setS({ ...s, api_credit_warn_usd: e.target.value })} />
+          </Field>
+        </div>
+        {st?.credit && (
+          <p className="faint" style={{ fontSize: '0.82rem', margin: 0 }}>
+            {st.credit.remaining_usd != null ? `About $${st.credit.remaining_usd.toFixed(2)} left. ` : ''}This app has used ${st.credit.spent_usd.toFixed(2)} over {st.credit.calls} Claude calls. {st.credit.note} When it runs out, type{' '}
+            <code>/process-lesson</code> in Claude Code after each lesson.
+          </p>
+        )}
         {!ai.available && <div className="notice" style={{ fontSize: '0.85rem' }}>Claude is not enabled ({ai.reason}) Transcripts will still be imported and matched, but Urdu ones stay untranslated until you enable AI and press Translate.</div>}
 
         <strong>4. Recording reminders</strong>
